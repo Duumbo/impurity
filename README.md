@@ -23,4 +23,4 @@ cargo run
 ```
 
 ## Todo
-See my ![Trello](https://trello.com/b/hCw6jDse/impurity-solver).
+See my [Trello](https://trello.com/b/hCw6jDse/impurity-solver).
