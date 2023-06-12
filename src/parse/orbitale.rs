@@ -5,6 +5,10 @@ use derive_more::{Error, Constructor};
 use csv::{Reader, StringRecord};
 use rand::Rng;
 
+/// Parse the orbital variationnal definition
+/// # Arguments
+/// * __`fp`__ - File path to the definition file, in csv format.
+/// * __`s`__ - Size of the system.
 pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
     // Parameter reference vector. column packed.
     let mut fij: Vec<f64> = vec![0.0; s*s];
@@ -37,11 +41,8 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
                     orbitale_params.push(rng.gen());
                 }
                 let var_param: f64 = orbitale_params[param - 1];
-                if i > j {
-                    fij[j + i*s] = var_param;
-                } else {
-                    fij[j + i*s] = -var_param;
-                }
+                fij[i + j*s] = var_param;
+                fij[j + i*s] = -var_param;
             },
             Err(error) => {
                 println!("Error at line {}, invalid parameter identifier.", k);
@@ -69,6 +70,7 @@ fn parse_single_elem(
 
 type Result<T> = std::result::Result<T, OrbitaleParseError>;
 
+/// Error in the orbital params definition.
 #[derive(Debug, Clone, Error, Constructor)]
 pub struct OrbitaleParseError {
     details: String

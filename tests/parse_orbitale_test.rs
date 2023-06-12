@@ -9,6 +9,7 @@ fn test_parse_2x2() {
     let fij = parse_orbitale_def(&fp.to_path_buf(), size).unwrap();
     assert_eq!(fij.len(), 4);
     assert_eq!(fij[1], -fij[2]);
+    assert!(fij[1] <= 0.0);
 }
 
 #[test]
@@ -20,6 +21,9 @@ fn test_parse_3x3() {
     assert_eq!(fij[1], -fij[3]);
     assert_eq!(fij[6], -fij[2]);
     assert_eq!(fij[5], -fij[7]);
+    assert!(fij[1] <= 0.0);
+    assert!(fij[2] <= 0.0);
+    assert!(fij[5] <= 0.0);
 }
 
 #[test]
