@@ -1,15 +1,13 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::fs::File;
 use std::fmt;
 use derive_more::{Error, Constructor};
 use csv::{Reader, StringRecord};
 use rand::Rng;
 
-use crate::SIZE;
-
-pub fn parse_orbitale_def() -> Result<Vec<f64>>{
+pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
     // Parameter reference vector. column packed.
-    let mut fij: Vec<f64> = vec![0.0; SIZE*SIZE];
+    let mut fij: Vec<f64> = vec![0.0; s*s];
     // Parameter vector. Ordered by "n".
     let mut orbitale_params: Vec<f64> = Vec::new();
     let mut n_orbitale_params: usize = 0;
@@ -17,7 +15,6 @@ pub fn parse_orbitale_def() -> Result<Vec<f64>>{
     let mut rng = rand::thread_rng();
 
     // Parse input file.
-    let fp = Path::new("data/orbitale.csv");
     let file = File::open(fp)?;
     let mut reader = Reader::from_reader(file);
     for (k, result) in reader.records().enumerate() {
@@ -41,9 +38,9 @@ pub fn parse_orbitale_def() -> Result<Vec<f64>>{
                 }
                 let var_param: f64 = orbitale_params[param - 1];
                 if i > j {
-                    fij[j + i*SIZE] = var_param;
+                    fij[j + i*s] = var_param;
                 } else {
-                    fij[j + i*SIZE] = -var_param;
+                    fij[j + i*s] = -var_param;
                 }
             },
             Err(error) => {
