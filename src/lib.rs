@@ -1,6 +1,5 @@
-
 /// Size of the system.
-pub const SIZE: usize = 2;
+pub const SIZE: usize = 8;
 
 /// Input file parsing util.
 /// # Subfiles

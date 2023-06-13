@@ -10,3 +10,10 @@ pfapack = "0.2.0"
 csv = "1.2.2"
 rand = "0.8.5"
 derive_more = "0.99.16"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "pfaffian_benchmark"
+harness = false
