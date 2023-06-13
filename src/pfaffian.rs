@@ -1,5 +1,5 @@
-use pfapack::skpfa;
 use crate::SIZE;
+use pfapack::skpfa;
 
 pub fn compute_pfaffian_wq(a: &mut [f64]) -> f64 {
     const N: i32 = SIZE as i32;
@@ -21,7 +21,7 @@ pub fn compute_pfaffian_wq(a: &mut [f64]) -> f64 {
             &mut iwork,
             &mut work,
             &(-1),
-            &mut info
+            &mut info,
         )
     }
     let lwork: i32 = work[0] as i32;
@@ -29,16 +29,7 @@ pub fn compute_pfaffian_wq(a: &mut [f64]) -> f64 {
     let mut work: Vec<f64> = Vec::with_capacity(lwork as usize);
     unsafe {
         skpfa::dskpfa(
-            'L' as u8,
-            'P' as u8,
-            &N,
-            a,
-            &N,
-            &mut pfaff,
-            &mut iwork,
-            &mut work,
-            &lwork,
-            &mut info
+            'L' as u8, 'P' as u8, &N, a, &N, &mut pfaff, &mut iwork, &mut work, &lwork, &mut info,
         )
     }
     assert_eq!(info, 0);

@@ -1,17 +1,17 @@
-use std::path::PathBuf;
-use std::fs::File;
-use std::fmt;
-use derive_more::{Error, Constructor};
 use csv::{Reader, StringRecord};
+use derive_more::{Constructor, Error};
 use rand::Rng;
+use std::fmt;
+use std::fs::File;
+use std::path::PathBuf;
 
 /// Parse the orbital variationnal definition
 /// # Arguments
 /// * __`fp`__ - File path to the definition file, in csv format.
 /// * __`s`__ - Size of the system.
-pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
+pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
     // Parameter reference vector. column packed.
-    let mut fij: Vec<f64> = vec![0.0; s*s];
+    let mut fij: Vec<f64> = vec![0.0; s * s];
     // Parameter vector. Ordered by "n".
     let mut orbitale_params: Vec<f64> = Vec::new();
     let mut n_orbitale_params: usize = 0;
@@ -25,8 +25,13 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
         let rec = result?;
         // Should have 3 column.
         if rec.len() != 3 {
-            println!("Error at line {} in orbitale.csv, invalid number of elements.", k);
-            return Err(OrbitaleParseError::new("Invalid number of argument on a line.".to_owned()));
+            println!(
+                "Error at line {} in orbitale.csv, invalid number of elements.",
+                k
+            );
+            return Err(OrbitaleParseError::new(
+                "Invalid number of argument on a line.".to_owned(),
+            ));
         }
 
         // Parse element coordinates.
@@ -41,30 +46,28 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>>{
                     orbitale_params.push(rng.gen());
                 }
                 let var_param: f64 = orbitale_params[param - 1];
-                fij[i + j*s] = var_param;
-                fij[j + i*s] = -var_param;
-            },
+                fij[i + j * s] = var_param;
+                fij[j + i * s] = -var_param;
+            }
             Err(error) => {
                 println!("Error at line {}, invalid parameter identifier.", k);
                 return Err(OrbitaleParseError::from(error));
-            },
+            }
         };
     }
     Ok(fij)
 }
 
-fn parse_single_elem(
-    line: &StringRecord,
-    col: usize,
-    l: usize
-) -> Result<usize> {
-
+fn parse_single_elem(line: &StringRecord, col: usize, l: usize) -> Result<usize> {
     match line.get(col).unwrap().parse::<usize>() {
         Ok(v) => Ok(v),
         Err(error) => {
-            println!("Expected valid coordinates in orbitale.csv at line {}, col {}", l, col);
+            println!(
+                "Expected valid coordinates in orbitale.csv at line {}, col {}",
+                l, col
+            );
             Err(OrbitaleParseError::from(error))
-        },
+        }
     }
 }
 
@@ -73,7 +76,7 @@ type Result<T> = std::result::Result<T, OrbitaleParseError>;
 /// Error in the orbital params definition.
 #[derive(Debug, Clone, Error, Constructor)]
 pub struct OrbitaleParseError {
-    details: String
+    details: String,
 }
 
 impl fmt::Display for OrbitaleParseError {

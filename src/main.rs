@@ -10,4 +10,3 @@ fn main() {
     let pfaffian = compute_pfaffian_wq(&mut fij);
     println!("{}", pfaffian);
 }
-
