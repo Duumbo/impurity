@@ -35,8 +35,9 @@ implementation improved or regressed, you need to run both implementation with
 ```shell
 cargo bench
 ```
-To implement a new micro-bench, simply add a new file in the benches directory
-and add a new entry in the `Cargo.toml`.
+To implement a new micro-bench, simply add a new benchmark in the appropriate
+file in the `benches/benchmarks` directory, then add the function to the
+benchmark main.
 
 ## Todo
 See my [Trello](https://trello.com/b/hCw6jDse/impurity-solver).

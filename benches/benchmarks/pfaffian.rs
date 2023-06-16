@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, Criterion};
 use impurity::parse::orbitale::parse_orbitale_def;
 use impurity::pfaffian::compute_pfaffian_wq;
 use impurity::SIZE;
@@ -14,5 +14,5 @@ pub fn bench_compute_pfaff(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_compute_pfaff);
-criterion_main!(benches);
+criterion_group!(benches, bench_compute_pfaff,);
+
