@@ -17,3 +17,6 @@ criterion = "0.5.1"
 [[bench]]
 name = "pfaffian_benchmark"
 harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = [ "--html-in-header", "katex-header.html" ]
