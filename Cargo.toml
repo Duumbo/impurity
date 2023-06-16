@@ -15,5 +15,8 @@ derive_more = "0.99.16"
 criterion = "0.5.1"
 
 [[bench]]
-name = "pfaffian_benchmark"
+name = "bench_main"
 harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = [ "--html-in-header", "katex-header.html" ]

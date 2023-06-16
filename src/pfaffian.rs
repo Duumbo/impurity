@@ -1,6 +1,18 @@
 use crate::SIZE;
 use pfapack::skpfa;
 
+/// Computes the Pfaffian with a workspace query.
+/// # Arguments
+/// * __`a`__ - The $f_{ìj}$ matix. This is the variationnal parameters of the
+/// pfaffian state.
+///
+/// # Returns
+/// * __`pfaff`__ - The computed pfaffian $\braket{x}{\phi_{\text{PF}}}$.
+///
+/// # Explanation of the function
+/// This function computes the pfaffian in two parts. The first part of the
+/// function calls the workspace query of Pfapack. The second part calls the
+/// pfaffian computation routine with the optimal workspace size.
 pub fn compute_pfaffian_wq(a: &mut [f64]) -> f64 {
     const N: i32 = SIZE as i32;
     let mut pfaff: f64 = 0.0;
