@@ -65,3 +65,4 @@ pub fn compute_jastrow_exp(fock_state: FockState, jastrow_params: &[f64]) -> f64
 pub fn fast_update_jastrow() {
     unimplemented!();
 }
+

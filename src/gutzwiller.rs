@@ -41,3 +41,56 @@ pub fn compute_gutzwiller_exp(fock_state: FockState, gutzwiller_params: &[f64]) 
 pub fn fast_update_gutzwiller() {
     unimplemented!();
 }
+
+#[cfg(test)]
+mod test {
+    use rand::Rng;
+    use crate::{FockState, SIZE};
+
+    use super::compute_gutzwiller_exp;
+
+    // This test choses a random state and random params and computes the
+    // Gutzwiller exponent.
+
+    #[test]
+    fn test_gutzwiller_exp() {
+        // This is a random test, run it five times.
+        for test_iter in 0..10 {
+            let mut rng = rand::thread_rng();
+
+            // Random up state.
+            let e_up = rng.gen::<u8>();
+
+            // Random down state.
+            let e_down = rng.gen::<u8>();
+
+            // Get the index that are the same.
+            let e_and = e_down & e_up;
+            let mut ind: Vec<u8> = Vec::new();
+            for i in 0..SIZE {
+                if (e_and & (1 << (SIZE - 1 - i)) as u8) == (1 << (SIZE - 1 - i)) as u8 {
+                    ind.push(i as u8);
+                }
+            }
+
+            let state = FockState {spin_up: e_up, spin_down: e_down,};
+            let mut rng_params: Vec<f64> = Vec::with_capacity(SIZE);
+            for _ in 0..SIZE {rng_params.push(rng.gen::<f64>());}
+
+            // Compute the result manually
+            let mut manual = 0.0;
+            for i in ind.iter() {
+                manual += &rng_params[*i as usize];
+            }
+
+            // These should be exactly the same always.
+            println!("Test iteration: {}, Computed: {}, Test implementation: {}",
+                     test_iter,
+                     compute_gutzwiller_exp(state, &rng_params),
+                     manual,
+            );
+            let state = FockState {spin_up: e_up, spin_down: e_down,};
+            assert_eq!(compute_gutzwiller_exp(state, &rng_params), manual);
+        }
+    }
+}
