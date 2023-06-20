@@ -1,4 +1,4 @@
-use crate::{SIZE, FockState};
+use crate::{SIZE, FockState, BitStruct};
 
 /// Computes the gutzwiller factor for a single fock state.
 /// # Arguments
@@ -29,7 +29,7 @@ pub fn compute_gutzwiller_exp(fock_state: FockState, gutzwiller_params: &[f64]) 
     let mut i = gutzwiller_sites.leading_zeros() as usize;
     while i < SIZE {
         gutz_out += gutzwiller_params[i];
-        gutzwiller_sites ^= 1 << (SIZE - 1 - i);
+        gutzwiller_sites ^= 1 << ((SIZE - 1 - i) as BitStruct);
         i = gutzwiller_sites.leading_zeros() as usize;
     }
     gutz_out
@@ -45,7 +45,7 @@ pub fn fast_update_gutzwiller() {
 #[cfg(test)]
 mod test {
     use rand::Rng;
-    use crate::{FockState, SIZE};
+    use crate::{FockState, SIZE, BitStruct};
 
     use super::compute_gutzwiller_exp;
 
@@ -59,16 +59,16 @@ mod test {
             let mut rng = rand::thread_rng();
 
             // Random up state.
-            let e_up = rng.gen::<u8>();
+            let e_up = rng.gen::<BitStruct>();
 
             // Random down state.
-            let e_down = rng.gen::<u8>();
+            let e_down = rng.gen::<BitStruct>();
 
             // Get the index that are the same.
             let e_and = e_down & e_up;
             let mut ind: Vec<u8> = Vec::new();
             for i in 0..SIZE {
-                if (e_and & (1 << (SIZE - 1 - i)) as u8) == (1 << (SIZE - 1 - i)) as u8 {
+                if (e_and & (1 << ((SIZE - 1 - i)) as BitStruct)) == (1 << ((SIZE - 1 - i) as BitStruct)) {
                     ind.push(i as u8);
                 }
             }

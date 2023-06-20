@@ -14,8 +14,8 @@
 /// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct FockState {
-    pub spin_up: u8,
-    pub spin_down: u8,
+    pub spin_up: BitStruct,
+    pub spin_down: BitStruct,
 }
 
 impl std::ops::Shl<usize> for FockState {

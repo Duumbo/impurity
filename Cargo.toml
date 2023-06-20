@@ -8,8 +8,12 @@ edition = "2021"
 [dependencies]
 pfapack = "0.2.0"
 csv = "1.2.2"
-rand = "0.8.5"
 derive_more = "0.99.16"
+bitvec = "1.0.1"
+
+[dependencies.rand]
+version = "0.8.5"
+features = ["small_rng"]
 
 [dev-dependencies]
 criterion = "0.5.1"
