@@ -1,5 +1,20 @@
-use crate::SIZE;
+use crate::{SIZE, FockState};
 use pfapack::skpfa;
+
+/// Represents the Pfaffian state $\lvert\phi_{\text{PF}}\rangle$.
+/// # Fields
+/// * __`coeffs`__ - The variationnal parameters $f_{ij}$.
+/// * __`n_elec`__ - The number of electrons. This value is constant and
+/// determines the size of the matrix $A$.
+/// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
+/// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
+/// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
+pub struct PfaffianState {
+    pub coeffs: Vec<f64>,
+    pub n_elec: usize,
+    pub matrix: Vec<f64>,
+    pub curr_state: FockState,
+}
 
 /// Computes the Pfaffian with a workspace query.
 /// # Arguments
