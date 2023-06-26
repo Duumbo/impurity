@@ -1,6 +1,6 @@
 /// Size of the system.
-type BitStruct = u128;
-pub const SIZE: usize = 128;
+type BitStruct = u8;
+pub static SIZE: usize = 8;
 
 /// Input file parsing util.
 /// # Subfiles
