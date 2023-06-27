@@ -1,6 +1,11 @@
+use bitvec::prelude::BitArray;
+
 /// Size of the system.
-type BitStruct = u8;
+type BitStruct = BitArray;
 pub static SIZE: usize = 8;
+
+pub static CONS_U: f64 = 1.0;
+pub static CONS_T: f64 = 1.0;
 
 /// Input file parsing util.
 /// # Subfiles
@@ -91,3 +96,5 @@ pub mod jastrow;
 ///
 /// This is equivalent to $n_{i\downarrow}\\&n_{i\uparrow}$
 pub mod gutzwiller;
+
+pub mod hamiltonian;

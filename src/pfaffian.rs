@@ -1,4 +1,4 @@
-use crate::{SIZE, FockState, BitStruct};
+use crate::{SIZE, FockState};
 use pfapack::skpfa;
 
 #[derive(Clone, Copy, Debug)]
@@ -42,13 +42,11 @@ pub fn construct_matrix_a_from_state(fij: Vec<f64>, state: FockState) -> Pfaffia
     let (mut spin_up, mut spin_down) = (state.spin_up, state.spin_down);
     let (mut i, mut j) = (spin_up.leading_zeros(), spin_down.leading_zeros());
     while (i as usize) < SIZE {
-        println!("i: {}", i);
         indices.push(i as usize);
         spin_up ^= 1 << (SIZE - 1 - i as usize);
         i = spin_up.leading_zeros();
     }
     while (j as usize) < SIZE {
-        println!("j: {}", j);
         indices2.push(j as usize);
         spin_down ^= 1 << (SIZE - 1 - j as usize);
         j = spin_down.leading_zeros();

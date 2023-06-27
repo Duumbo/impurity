@@ -12,7 +12,7 @@
 /// let state_20_both = FockState {spin_up: 20, spin_down: 20};
 /// assert_eq!(state_5_both << 2, state_20_both);
 /// ```
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct FockState {
     pub spin_up: BitStruct,
     pub spin_down: BitStruct,
