@@ -17,6 +17,7 @@ features = ["small_rng"]
 
 [dev-dependencies]
 criterion = "0.5.1"
+assert = "0.7.4"
 
 [[bench]]
 name = "bench_main"
