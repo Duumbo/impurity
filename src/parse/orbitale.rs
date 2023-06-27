@@ -47,7 +47,7 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
                 }
                 let var_param: f64 = orbitale_params[param - 1];
                 fij[i + j * s] = var_param;
-                fij[j + i * s] = var_param;
+                fij[j + i * s] = -var_param;
             }
             Err(error) => {
                 println!("Error at line {}, invalid parameter identifier.", k);
