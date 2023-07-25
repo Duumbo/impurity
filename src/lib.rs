@@ -1,8 +1,6 @@
-use bitvec::prelude::BitArray;
-
 /// Size of the system.
-type BitStruct = BitArray;
-pub static SIZE: usize = 8;
+type BitStruct = SpinState;
+pub const SIZE: usize = 10;
 
 pub static CONS_U: f64 = 1.0;
 pub static CONS_T: f64 = 1.0;

@@ -9,7 +9,9 @@ edition = "2021"
 pfapack = "0.2.0"
 csv = "1.2.2"
 derive_more = "0.99.16"
+num = "0.4.0"
 bitvec = "1.0.1"
+itertools = "0.8.2"
 
 [dependencies.rand]
 version = "0.8.5"

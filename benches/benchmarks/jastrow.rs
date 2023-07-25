@@ -12,7 +12,7 @@ pub fn jastrow_long(c: &mut Criterion) {
             spin_up: 21,
             spin_down: 53,
         };
-            res = compute_jastrow_exp(state, black_box(&params));
+            res = compute_jastrow_exp(state, black_box(&params), 8, 8);
         })
     });
 }

@@ -11,12 +11,12 @@ use impurity::{SIZE, FockState, CONS_T};
 const UP: u8 = 5;
 const DOWN: u8 = 12;
 
-fn compute_internal_product(state: FockState, fij: Vec<f64>, vij: Vec<f64>, gi: Vec<f64>) -> f64 {
+fn compute_internal_product(state: FockState<u8>, fij: Vec<f64>, vij: Vec<f64>, gi: Vec<f64>) -> f64 {
     let mut pfaffian_state = construct_matrix_a_from_state(fij, state);
     let pfaffian = compute_pfaffian_wq(&mut pfaffian_state.matrix, pfaffian_state.n_elec as i32);
     pfaffian_state.rebuild_matrix();
-    let jastrow_exp = compute_jastrow_exp(state, &vij);
-    let gutz_exp = compute_gutzwiller_exp(state, &gi);
+    let jastrow_exp = compute_jastrow_exp(state, &vij, 8);
+    let gutz_exp = compute_gutzwiller_exp(state, &gi, 8);
     let scalar_prod = <f64>::exp(jastrow_exp + gutz_exp) * pfaffian;
     scalar_prod
 }

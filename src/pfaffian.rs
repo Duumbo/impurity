@@ -15,14 +15,14 @@ enum Spin {
 /// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
 /// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
 /// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
-pub struct PfaffianState {
+pub struct PfaffianState<T> {
     pub coeffs: Vec<f64>,
     pub n_elec: usize,
     pub matrix: Vec<f64>,
-    pub curr_state: FockState,
+    pub curr_state: FockState<T>,
 }
 
-impl PfaffianState {
+impl<T> PfaffianState<T> {
     pub fn rebuild_matrix(&mut self) {
         for i in 0..self.n_elec {
             for j in 0..self.n_elec {
@@ -32,7 +32,7 @@ impl PfaffianState {
     }
 }
 
-pub fn construct_matrix_a_from_state(fij: Vec<f64>, state: FockState) -> PfaffianState {
+pub fn construct_matrix_a_from_state(fij: Vec<f64>, state: FockState<u8>) -> PfaffianState<u8> {
     // Fij upup, updown, downup, downdown
     let n = state.spin_up.count_ones() as usize + state.spin_down.count_ones() as usize;
     let mut a: Vec<f64> = vec![0.0; n*n];
