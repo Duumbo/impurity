@@ -22,21 +22,21 @@ use crate::{FockState, BitOps};
 /// let jastrow_params: Vec<f64> = vec![1.0; SIZE*SIZE];
 /// assert_eq!(compute_jastrow_exp(state, &jastrow_params), 9.0);
 /// ```
-pub fn compute_jastrow_exp<T>(fock_state: FockState<T>, jastrow_params: &[f64], n_sites: usize, max_size: usize) -> f64
+pub fn compute_jastrow_exp<T>(fock_state: FockState<T>, jastrow_params: &[f64], n_sites: usize) -> f64
 where T: BitOps + std::fmt::Display
 {
     let mut jastrow_out = 0.0;
     let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
-    regular_nor &= <u64>::max_value() << (64 - n_sites);
+    regular_nor.mask_bits(n_sites);
     let mut i: usize = regular_nor.leading_zeros() as usize;
     let mut indices: Vec<usize> = Vec::with_capacity(n_sites);
     while i < n_sites {
         indices.push(i);
-        regular_nor ^= 1 << (64 - 1 - i);
+        regular_nor.set(i);
         for nk in 0..indices.len() - 1 {
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
-            if !(n1 & ( 1 << (64 - 1 - i)) == 0) ^ !(n2 & (1 << (64 - 1 - k)) == 0) {
+            if n1.check(i) ^ n2.check(k) {
                jastrow_out -= jastrow_params[i + k*n_sites];
             } else {
                jastrow_out += jastrow_params[i + k*n_sites];
@@ -156,7 +156,7 @@ mod test {
                 }
             }
             close(
-                compute_jastrow_exp(fock_state1, &jastrow_params, 8, 8),
+                compute_jastrow_exp(fock_state1, &jastrow_params, 8),
                 compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, 8, 8),
                 1e-12
             )
@@ -176,7 +176,7 @@ mod test {
                 jastrow_params[j + i*8] = jastrow_params[i + j*8];
             }
         }
-        let mut jastrow = compute_jastrow_exp(fock_state.clone(), &jastrow_params, 8, 8);
+        let mut jastrow = compute_jastrow_exp(fock_state.clone(), &jastrow_params, 8);
         println!("previous_jas: {}", jastrow);
         for _ in 0..100 {
             let spin_update: f64 = rng.gen();
@@ -192,7 +192,7 @@ mod test {
                 up.set(new_index);
                 println!("new up: {}", up);
                 let new_fock_state = FockState { spin_up: up, spin_down: down };
-                let full_jastrow = compute_jastrow_exp(new_fock_state.clone(), &jastrow_params, 8, 8);
+                let full_jastrow = compute_jastrow_exp(new_fock_state.clone(), &jastrow_params, 8);
                 fast_update_jastrow(&mut jastrow, &jastrow_params, &fock_state, &new_fock_state, 8, 8, old_index, new_index);
                 assert_eq!(full_jastrow, jastrow);
                 fock_state = new_fock_state;
@@ -213,9 +213,15 @@ mod test {
             let fock_state2 = FockState { spin_up: up, spin_down: down };
             let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE*SIZE);
             for _ in 0..SIZE*SIZE {jastrow_params.push(rng.gen::<f64>());}
-            assert_eq!(
-                compute_jastrow_exp(fock_state1, &jastrow_params, 5, 8),
-                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, 5, 8)
+            for i in 0..5 {
+                for j in 0..5 {
+                    jastrow_params[j + i*5] = jastrow_params[i + j*5];
+                }
+            }
+            close(
+                compute_jastrow_exp(fock_state1, &jastrow_params, 5),
+                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, 5, 8),
+                1e-12
             )
         }
     }
