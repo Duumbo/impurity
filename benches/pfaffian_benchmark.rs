@@ -9,7 +9,7 @@ pub fn bench_compute_pfaff(c: &mut Criterion) {
     c.bench_function("Calcul pfaffian 8x8", |b| {
         b.iter(|| {
             let mut fij = parse_orbitale_def(&orbitale_fp.to_path_buf(), SIZE).unwrap();
-            compute_pfaffian_wq(black_box(&mut fij))
+            compute_pfaffian_wq(black_box(&mut fij), 1)
         })
     });
 }

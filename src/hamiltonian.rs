@@ -1,20 +1,17 @@
-use crate::{FockState, SIZE, CONS_U, BitOps};
-
+use crate::{BitOps, FockState, CONS_U, SIZE};
 
 /// Computes the potential energy term of the Hamiltonian.
 pub fn terme_pot<T>(spin_up: T, spin_down: T) -> f64
-where T: BitOps
+where
+    T: BitOps,
 {
     ((spin_up & spin_down).count_ones() as f64) * CONS_U
 }
 
-pub fn terme_cin<T>(
-    spin_up: T,
-    spin_down: T,
-) -> Vec<FockState<T>>
-where T: BitOps + From<u8>
+pub fn terme_cin<T>(spin_up: T, spin_down: T) -> Vec<FockState<T>>
+where
+    T: BitOps + From<u8>,
 {
-
     let mut out: Vec<FockState<T>> = Vec::with_capacity(8);
     // Rotate the bits left. We don't have to do the right one, because it give
     // the same truth values, just shifted.
@@ -30,34 +27,52 @@ where T: BitOps + From<u8>
     let can_gol_spin_down = spin_down_shr1 ^ spin_down;
 
     out.append(
-        &mut tm(spin_up, can_gor_spin_up, 2).into_iter()
-        .map(|s| FockState{spin_up: s, spin_down})
-        .collect::<Vec<FockState<T>>>()
+        &mut tm(spin_up, can_gor_spin_up, 2)
+            .into_iter()
+            .map(|s| FockState {
+                spin_up: s,
+                spin_down,
+                n_sites: SIZE,
+            })
+            .collect::<Vec<FockState<T>>>(),
     );
     out.append(
         &mut tm(spin_down, can_gor_spin_down, 2)
-        .into_iter()
-        .map(|s| FockState{spin_up, spin_down: s})
-        .collect::<Vec<FockState<T>>>()
+            .into_iter()
+            .map(|s| FockState {
+                spin_up,
+                spin_down: s,
+                n_sites: SIZE,
+            })
+            .collect::<Vec<FockState<T>>>(),
     );
     out.append(
         &mut tm(spin_up, can_gol_spin_up, 1)
-        .into_iter()
-        .map(|s| FockState{spin_up: s, spin_down})
-        .collect::<Vec<FockState<T>>>()
+            .into_iter()
+            .map(|s| FockState {
+                spin_up: s,
+                spin_down,
+                n_sites: SIZE,
+            })
+            .collect::<Vec<FockState<T>>>(),
     );
     out.append(
         &mut tm(spin_down, can_gol_spin_down, 1)
-        .into_iter()
-        .map(|s| FockState{spin_up, spin_down: s})
-        .collect::<Vec<FockState<T>>>()
+            .into_iter()
+            .map(|s| FockState {
+                spin_up,
+                spin_down: s,
+                n_sites: SIZE,
+            })
+            .collect::<Vec<FockState<T>>>(),
     );
 
     out
 }
 
 fn tm<T>(spin: T, mut truth: T, shl_qt: usize) -> Vec<T>
-where T: BitOps + From<u8>
+where
+    T: BitOps + From<u8>,
 {
     let mut i = truth.leading_zeros();
     let mut out_vec: Vec<T> = Vec::with_capacity(8);

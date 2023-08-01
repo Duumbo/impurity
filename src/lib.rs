@@ -1,5 +1,4 @@
 /// Size of the system.
-type BitStruct = SpinState;
 pub const SIZE: usize = 10;
 
 pub static CONS_U: f64 = 1.0;

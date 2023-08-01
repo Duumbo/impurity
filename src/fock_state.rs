@@ -3,11 +3,6 @@ extern crate num;
 use num::PrimInt;
 pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 
-enum Spin {
-    Up,
-    Down
-}
-
 pub trait BitOps:
     std::ops::BitAnd<Output = Self> +
     Sized +
@@ -15,7 +10,8 @@ pub trait BitOps:
     std::ops::BitXor<Output = Self> +
     Copy +
     std::ops::Not<Output = Self> +
-    std::cmp::PartialEq
+    std::cmp::PartialEq +
+    std::ops::Shr<usize, Output = Self>
 {
     fn leading_zeros(self) -> u32;
     fn count_ones(self) -> u32;
@@ -24,6 +20,7 @@ pub trait BitOps:
     fn mask_bits(&mut self, by: usize);
     fn set(&mut self, n: usize);
     fn check(&self, i: usize) -> bool;
+    fn ones() -> Self;
 }
 
 /// BitWise operations for all primitive ints.
@@ -64,6 +61,10 @@ impl<I> BitOps for I
         if i >= n_bits {return false;}
         let one: I = 1.into();
         !(*self & (one << (n_bits - 1 - i)) == 0.into())
+    }
+    #[inline(always)]
+    fn ones() -> Self {
+        <I>::max_value()
     }
 }
 
@@ -118,6 +119,11 @@ impl BitOps for SpinState {
         let meta_n = <usize>::min(i / 8, SIZE / 8);
         let granular_n = i % 8;
         !(self.state[meta_n] & 1 << (8 - granular_n - 1) == 0)
+    }
+
+    fn ones() -> Self {
+        let tmp = [0xff; ARRAY_SIZE];
+        SpinState{state: tmp, n_elec: ARRAY_SIZE*8}
     }
 }
 
@@ -249,8 +255,8 @@ impl std::ops::Shl<usize> for SpinState {
 /// This structure implements bitshifts to both fields.
 /// ```rust
 /// use impurity::FockState;
-/// let state_5_both = FockState {spin_up: 5, spin_down: 5};
-/// let state_20_both = FockState {spin_up: 20, spin_down: 20};
+/// let state_5_both = FockState {spin_up: 5u8, spin_down: 5u8, n_sites: 8};
+/// let state_20_both = FockState {spin_up: 20u8, spin_down: 20u8, n_sites: 8};
 /// assert_eq!(state_5_both << 2, state_20_both);
 /// ```
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -258,6 +264,7 @@ pub struct FockState<T>
 {
     pub spin_up: T,
     pub spin_down: T,
+    pub n_sites: usize,
 }
 
 impl<T: std::ops::Shl<usize, Output = T>> std::ops::Shl<usize> for FockState<T> {
@@ -267,6 +274,7 @@ impl<T: std::ops::Shl<usize, Output = T>> std::ops::Shl<usize> for FockState<T> 
         Self{
             spin_up: self.spin_up << u,
             spin_down: self.spin_down << u,
+            n_sites: self.n_sites,
         }
     }
 }
@@ -278,6 +286,7 @@ impl<T: std::ops::Shr<usize, Output = T>> std::ops::Shr<usize> for FockState<T> 
         Self{
             spin_up: self.spin_up >> u,
             spin_down: self.spin_down >> u,
+            n_sites: self.n_sites,
         }
     }
 }

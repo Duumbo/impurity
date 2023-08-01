@@ -76,7 +76,7 @@ type Result<T> = std::result::Result<T, OrbitaleParseError>;
 /// Error in the orbital params definition.
 #[derive(Debug, Clone, Error, Constructor)]
 pub struct OrbitaleParseError {
-    details: String,
+    pub details: String,
 }
 
 impl fmt::Display for OrbitaleParseError {
