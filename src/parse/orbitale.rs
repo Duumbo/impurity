@@ -25,13 +25,15 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
         let rec = result?;
         // Should have 3 column.
         if rec.len() != 3 {
-            println!(
+            let d = format!(
                 "Error at line {} in orbitale.csv, invalid number of elements.",
                 k
             );
-            return Err(OrbitaleParseError::new(
+            let mut e = OrbitaleParseError::new(
                 "Invalid number of argument on a line.".to_owned(),
-            ));
+            );
+            e.details = d;
+            return Err(e);
         }
 
         // Parse element coordinates.
@@ -50,8 +52,11 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
                 fij[j + i * s] = -var_param;
             }
             Err(error) => {
-                println!("Error at line {}, invalid parameter identifier.", k);
-                return Err(OrbitaleParseError::from(error));
+                // Add error message.
+                let d = format!("Error at line {}, invalid parameter identifier.", k);
+                let mut e = OrbitaleParseError::from(error);
+                e.details = d;
+                return Err(e);
             }
         };
     }
@@ -62,11 +67,13 @@ fn parse_single_elem(line: &StringRecord, col: usize, l: usize) -> Result<usize>
     match line.get(col).unwrap().parse::<usize>() {
         Ok(v) => Ok(v),
         Err(error) => {
-            println!(
+            let details = format!(
                 "Expected valid coordinates in orbitale.csv at line {}, col {}",
                 l, col
             );
-            Err(OrbitaleParseError::from(error))
+            let mut e = OrbitaleParseError::from(error);
+            e.details = details;
+            Err(e)
         }
     }
 }
@@ -76,7 +83,7 @@ type Result<T> = std::result::Result<T, OrbitaleParseError>;
 /// Error in the orbital params definition.
 #[derive(Debug, Clone, Error, Constructor)]
 pub struct OrbitaleParseError {
-    details: String,
+    pub details: String,
 }
 
 impl fmt::Display for OrbitaleParseError {
