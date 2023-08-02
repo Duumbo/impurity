@@ -5,7 +5,7 @@ use impurity::gutzwiller::compute_gutzwiller_exp;
 use impurity::hamiltonian::{terme_cin, terme_pot};
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::parse::orbitale::parse_orbitale_def;
-use impurity::pfaffian::{compute_pfaffian_wq, construct_matrix_a_from_state};
+use impurity::pfaffian::construct_matrix_a_from_state;
 use impurity::{FockState, CONS_T, SIZE};
 
 const UP: u8 = 5;
@@ -18,7 +18,7 @@ fn compute_internal_product(
     gi: Vec<f64>,
 ) -> f64 {
     let mut pfaffian_state = construct_matrix_a_from_state(fij, state);
-    let pfaffian = compute_pfaffian_wq(&mut pfaffian_state.matrix, pfaffian_state.n_elec as i32);
+    let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
     let jastrow_exp = compute_jastrow_exp(state, &vij, 8);
     let gutz_exp = compute_gutzwiller_exp(state, &gi, 8);

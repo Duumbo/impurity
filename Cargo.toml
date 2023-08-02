@@ -10,8 +10,18 @@ pfapack = "0.2.0"
 csv = "1.2.2"
 derive_more = "0.99.16"
 num = "0.4.0"
-bitvec = "1.0.1"
-itertools = "0.8.2"
+# Wrappers crates
+lapack = "0.19.0"
+blas = "0.22.0"
+intel-mkl-tool = "0.8.1"
+# Bindings crates
+lapack-sys = "0.14.0"
+blas-sys = "0.7.1"
+# Source crates
+# Intel implementation.
+intel-mkl-src = "0.8.1"
+# Openblas implementation.
+# openblas-src = "0.10.8"
 
 [dependencies.rand]
 version = "0.8.5"
