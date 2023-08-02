@@ -1,5 +1,8 @@
 /// Size of the system.
-pub const SIZE: usize = 8;
+pub const SIZE: usize = 10;
+
+pub static CONS_U: f64 = 1.0;
+pub static CONS_T: f64 = 1.0;
 
 /// Input file parsing util.
 /// # Subfiles
@@ -49,14 +52,26 @@ pub mod pfaffian;
 /// $$
 ///
 /// # Truth table
-/// | $n_i$ | $n_j$ | $(n_i-1)(n_j-1)$|
-/// |-------|-------|-----------------|
-/// | 0   | 0   | 1                   |
-/// | 0   | 1   | 0                   |
-/// | 1   | 0   | 0                   |
-/// | 1   | 1   | 0                   |
+/// Using the definition $n_i=n_{i\uparrow}+n_{i\downarrow}$,
 ///
-/// This is equivalent to $\neg(n_i \lor n_j)$
+/// | $n_{i\uparrow}$ | $n_{i\downarrow}$ | $n_{j\uparrow}$ | $n_{j\downarrow}$ | $(n_i-1)(n_j-1)$ |
+/// |-----------------|-------------------|-----------------|-------------------|------------------|
+/// | 0   | 0   | 0 | 0 | 1                   |
+/// | 0   | 1   | 0 | 0 | 0                   |
+/// | 1   | 0   | 0 | 0 | 0                   |
+/// | 1   | 1   | 0 | 0 | -1                   |
+/// | 0   | 0   | 1 | 0 | 0                   |
+/// | 0   | 1   | 1 | 0 | 0                   |
+/// | 1   | 0   | 1 | 0 | 0                   |
+/// | 1   | 1   | 1 | 0 | 0                   |
+/// | 0   | 0   | 0 | 1 | 0                   |
+/// | 0   | 1   | 0 | 1 | 0                  |
+/// | 1   | 0   | 0 | 1 | 0                   |
+/// | 1   | 1   | 0 | 1 | 0                   |
+/// | 0   | 0   | 1 | 1 | -1                   |
+/// | 0   | 1   | 1 | 1 | 0                   |
+/// | 1   | 0   | 1 | 1 | 0                   |
+/// | 1   | 1   | 1 | 1 | 1                   |
 ///
 pub mod jastrow;
 
@@ -78,3 +93,5 @@ pub mod jastrow;
 ///
 /// This is equivalent to $n_{i\downarrow}\\&n_{i\uparrow}$
 pub mod gutzwiller;
+
+pub mod hamiltonian;
