@@ -1,14 +1,37 @@
 use crate::{BitOps, FockState, CONS_U, SIZE};
 
-/// Computes the potential energy term of the Hamiltonian.
-pub fn terme_pot<T>(spin_up: T, spin_down: T) -> f64
+/// Computes the potential term of the Hamiltonian.
+/// # Arguments
+/// * __`spin_up`__ - The encoded spin up part of the fock state.
+/// * __`spin_down`__ - The encoded spin up part of the fock state.
+/// # Returns
+/// * __`pot_term`__ - The potential term of the Hamiltonian. Gives the diagonal
+/// term of the Hamiltonian.
+/// # Definition
+/// The potential term is defined
+/// $$
+/// H_U=U\sum_i n_{i\uparrow}n_{i\downarrow}
+/// $$
+pub fn potential<T>(spin_up: T, spin_down: T) -> f64
 where
     T: BitOps,
 {
     ((spin_up & spin_down).count_ones() as f64) * CONS_U
 }
 
-pub fn terme_cin<T>(spin_up: T, spin_down: T) -> Vec<FockState<T>>
+/// Computes the kinetic term of the Hamiltonian.
+/// # Arguments
+/// * __`spin_up`__ - The encoded spin up part of the fock state.
+/// * __`spin_down`__ - The encoded spin up part of the fock state.
+/// # Returns
+/// * __`kin_term`__ - The kinetic term of the Hamiltonian. Contains all the
+/// states that are accessible from the given state.
+/// # Definition
+/// The kinetic term is defined
+/// $$
+/// H_T=-t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
+/// $$
+pub fn kinetic<T>(spin_up: T, spin_down: T) -> Vec<FockState<T>>
 where
     T: BitOps + From<u8>,
 {

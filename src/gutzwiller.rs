@@ -10,10 +10,10 @@ use crate::{BitOps, FockState};
 /// of sites in the bitstring.
 /// * __`gutzwiller_params`__ - The variationnal parameters $g_i$ for the
 /// Gutzwiller projector. The order is by sites.
-/// * __[`SIZE`]__ - Constant. The number of sites in the system.
+/// * __`n_sites`__ - The number of sites in the system.
 /// # Returns
 /// * __`gutz_out`__ - The exponent of the Gutzwiller projector.
-/// # Exemple
+/// # Example
 /// As an exemple, let's take the state $\lvert 5;5\rangle$ and variationnal parameters
 /// all equal to one. Only $2$ bits are set on both bitstrings, so the result
 /// should be $2$.
@@ -46,7 +46,16 @@ where
 }
 
 /// Computes the gutzwiller fast update.
-/// # Not Implemented
+/// # Arguments
+/// * __`previous_gutz`__ - The previous Gutzwiller coefficient $\ln P_{\text{G}}$.
+/// `previous_gutz` is modified to contain the updated coefficient.
+/// * __`gutzwiller_params`__ - The variationnal parameters $g_i$ for the
+/// Gutzwiller projector. The order is by sites.
+/// * __`previous_other_state`__ - The opposite spin part of the previous [FockState].
+/// * __`previous_index`__ - The index before the hopping.
+/// * __`new_index`__ - The index after the hopping.
+/// # Example
+/// TODOC
 #[inline(always)]
 pub fn fast_update_gutzwiller<T>(
     previous_gutz: &mut f64,

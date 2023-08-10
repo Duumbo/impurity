@@ -8,9 +8,10 @@ use crate::{BitOps, FockState};
 /// matches the order of sites in the bitstring.
 /// * __`jastrow_params`__ - The variationnal parameters $v_{ij}$ for the
 /// Jastrow projector. Ordered by sites number, with small index $i$.
-/// * __[`SIZE`]__ - Constant. The number of sites in the system.
+/// * __`n_sites`__ - The number of sites in the system. Important because of the
+/// garbage data created if not taken into account.
 /// # Returns
-/// * __`jastrow_out`__ - The exponent of the Jastrow projector $P_J$.
+/// * __`jastrow_out`__ - The coefficient $\ln P_\text{J}$.
 /// # Exemple
 /// As an exemple, we have the state $\lvert 5\;5\rangle$ and variationnal parameters
 /// all equal to one. There are $6$ bits set to zero that can each see $5$ other
@@ -146,7 +147,19 @@ fn jastrow_single_update<T>(
 }
 
 /// Computes the Jastrow fast update
-/// # Not Implemented
+/// # Arguments
+/// * __`previous_jas`__ - The previous jastrow coefficient $\ln P_\text{J}$.
+/// `previous_jas` is modified to contain the updated coefficient.
+/// * __`jastrow_params`__ - The variationnal parameters $v_{ij}$ for the
+/// Jastrow projector. Ordered by sites number, with small index $i$.
+/// * __`previous_fock`__ - The [FockState] before the hopping.
+/// * __`new_fock`__ - The [FockState] after the hopping.
+/// * __`n_sites`__ - The number of sites to consider. Important in order to
+/// clear the garbage data that would be created.
+/// * __`previous_j`__ - The previous index of the hopped spin.
+/// * __`new_j`__ - The new index of the hopped spin.
+/// # Exemple
+/// TODOC
 pub fn fast_update_jastrow<T>(
     previous_jas: &mut f64,
     jastrow_params: &[f64],

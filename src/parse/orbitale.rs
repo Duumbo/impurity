@@ -29,9 +29,7 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
                 "Error at line {} in orbitale.csv, invalid number of elements.",
                 k
             );
-            let mut e = OrbitaleParseError::new(
-                "Invalid number of argument on a line.".to_owned(),
-            );
+            let mut e = OrbitaleParseError::new("Invalid number of argument on a line.".to_owned());
             e.details = d;
             return Err(e);
         }

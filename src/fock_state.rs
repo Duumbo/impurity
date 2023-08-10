@@ -3,6 +3,11 @@ extern crate num;
 use num::PrimInt;
 pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 
+/// Abstraction layer for common bitwise operations.
+/// # Purpose
+/// The Bitops trait brings in scope an abstraction layer over some common bitwise
+/// operations for a spin state. These operations make most functions compatible
+/// with either a primitive integer type or an arbitrarily large byte array.
 pub trait BitOps:
     std::ops::BitAnd<Output = Self> +
     Sized +
@@ -13,17 +18,33 @@ pub trait BitOps:
     std::cmp::PartialEq +
     std::ops::Shr<usize, Output = Self>
 {
+    /// Provides the number of leading zeros in the bitstring. This gives the
+    /// position of the first set bit in the string. This method is consistent
+    /// with [BitOps::check] and [BitOps::set].
     fn leading_zeros(self) -> u32;
+    /// Provides the number of set bits in the bitstirng. This gives the number
+    /// of electrons in the bitstring.
     fn count_ones(self) -> u32;
+    /// Compatibility layer for the std lib function of the same name.
     fn rotate_left(self, by: u32) -> Self;
+    /// Compatibility layer for the std lib function of the same name.
     fn rotate_right(self, by: u32) -> Self;
+    /// Set all the out of bounds bit to $0$. This is important if the bitstring
+    /// is not full, to ensure that we don't processe garbage data.
     fn mask_bits(&mut self, by: usize);
+    /// Set the $i$-th bit of the string, indexed from the left. This methods
+    /// is consistent with [BitOps::check] and [BitOps::leading_zeros].
     fn set(&mut self, n: usize);
+    /// Returns the truth value at index $i$, from the left. This methods is
+    /// consistent with [BitOps::set] and [BitOps::leading_zeros].
     fn check(&self, i: usize) -> bool;
+    /// Returns an owned instance of an all set bitstring.
     fn ones() -> Self;
 }
 
-/// BitWise operations for all primitive ints.
+/// BitWise operations for all primitive ints. All methods are inlined and use
+/// built-in  methods. [BitOps::set] and [BitOps::check] are implemented by
+/// shifting a bitmask.
 impl<I> BitOps for I
     where I: PrimInt + std::ops::BitXorAssign + std::ops::BitAndAssign + From<u8>
 {
@@ -68,12 +89,21 @@ impl<I> BitOps for I
     }
 }
 
+/// Encoding of the positions of a given spin.
+/// # Definition
+/// This structure fixes the number of electrons. The convention is to index
+/// from the left to right. This structure is slower than using an primitive
+/// integer type, but allows for an arbitrarily large number of spins, instead
+/// of the maximum of $128$ sites.
+/// # Usage
+/// TODOC
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SpinState {
     pub state: [u8; (SIZE + 7) / 8],
     pub n_elec: usize,
 }
 
+/// Bitwise implementations for the byte array structure [SpinState].
 impl BitOps for SpinState {
     fn count_ones(self) -> u32 {
         let mut count: u32 = 0;
@@ -245,12 +275,14 @@ impl std::ops::Shl<usize> for SpinState {
     }
 }
 
-/// The Fock state structure.
+/// The Fock state structure. Encodes the spins positions.
 /// # Definition
 /// This structure has two different fields, the spin up and spin down component.
-/// Each of these fields correspond to a physical `u128` that represent the
-/// occupation of this state. The convention is to place the sites in the order
-/// $i\in\[1,N\]$ for both fields.
+/// Each of these fields correspond to a physical bitstring that represent the
+/// occupation of this state. It can either be a primitive integer type, like
+/// [u64] or [u128], or it can be a byte array like [SpinState].
+/// The convention is to place the sites in the order
+/// $i\in\[0,N-1\]$ for both fields.
 /// # Usage
 /// This structure implements bitshifts to both fields.
 /// ```rust

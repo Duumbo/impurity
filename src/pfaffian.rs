@@ -1,12 +1,12 @@
 use crate::{BitOps, FockState, SIZE};
-use pfapack::skpfa;
+use blas::{daxpy, ddot, dgemv, dger};
 use lapack::{dgetrf, dgetri};
-use blas::{ddot, dgemv, dger, daxpy};
+use pfapack::skpfa;
 use std::fmt;
 
 pub enum Spin {
     Up,
-    Down
+    Down,
 }
 
 /// Represents the Pfaffian state $\lvert\phi_{\text{PF}}\rangle$.
@@ -23,7 +23,7 @@ pub struct PfaffianState {
     pub n_sites: usize,
     pub pfaff: f64,
     pub coeffs: Vec<f64>,
-    pub indices: (Vec<usize>, Vec<usize>),
+    indices: (Vec<usize>, Vec<usize>),
     pub inv_matrix: Vec<f64>,
 }
 
@@ -41,10 +41,14 @@ impl PfaffianState {
 
 impl fmt::Display for PfaffianState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
+        let width = 8;
         for i in 0..self.n_elec {
             write!(f, "\n|").unwrap();
             for j in 0..self.n_elec {
-                write!(f, " {} ", self.inv_matrix[j + self.n_elec*i]).unwrap();
+                write!(
+                    f, " {:width$} ",
+                    (self.inv_matrix[j + self.n_elec * i] * 1000.0).round() / 1000.0
+                ).unwrap();
             }
             write!(f, "|").unwrap();
         }
@@ -60,13 +64,13 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     let mut info2: i32 = 0;
 
     // Length of work vector
-    let n_entry: i32 = n*n;
+    let n_entry: i32 = n * n;
     // Workspaces
     let mut work: Vec<f64> = Vec::with_capacity(n_entry as usize);
     let mut ipiv: Vec<i32> = Vec::with_capacity(n as usize);
 
     // Inverse matrix `a` inplace using L*U decomposition.
-    unsafe{
+    unsafe {
         dgetrf(n, n, a, n, &mut ipiv, &mut info1);
         dgetri(n, a, n, &ipiv, &mut work, n_entry, &mut info2);
     }
@@ -74,11 +78,10 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     // These should never be not 0.
     // If this panics, then a was not of size n, most probably.
     // Refer to LAPACK error message.
-    if !(info1 == 0) || !(info2 == 0)  {
+    if !(info1 == 0) || !(info2 == 0) {
         println!(
             "The algorithm failed to invert the matrix. DGETRF: info={}, DGETRI: info={}",
-            info1,
-            info2
+            info1, info2
         );
         panic!("Matrix invertion fail.");
     }
@@ -123,14 +126,18 @@ where
     }
     for jj in 0..indices.len() {
         for ii in 0..indices.len() {
-            if indices[ii] == indices[jj] {continue;}
+            if indices[ii] == indices[jj] {
+                continue;
+            }
             a[ii + jj * n] = fij[indices[ii] + state.n_sites * indices[jj]];
             a[jj + ii * n] = -fij[indices[ii] + state.n_sites * indices[jj]];
         }
     }
     for jj in 0..indices2.len() {
         for ii in 0..indices2.len() {
-            if indices2[ii] == indices2[jj] {continue;}
+            if indices2[ii] == indices2[jj] {
+                continue;
+            }
             a[ii + off + (jj + off) * n] = fij[indices2[ii] + state.n_sites * indices2[jj]];
             a[jj + off + (ii + off) * n] = -fij[indices2[ii] + state.n_sites * indices2[jj]];
         }
@@ -138,17 +145,18 @@ where
 
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
-    println!("Direct Matrix: {}",
-    PfaffianState {
-        coeffs: fij.clone(),
-        n_elec: n,
-        n_sites: state.n_sites,
-        inv_matrix: a.clone(),
-        indices: (indices.clone(), indices2.clone()),
-        pfaff: pfaffian_value,
-    });
+    println!(
+        "Direct Matrix: {}",
+        PfaffianState {
+            coeffs: fij.clone(),
+            n_elec: n,
+            n_sites: state.n_sites,
+            inv_matrix: a.clone(),
+            indices: (indices.clone(), indices2.clone()),
+            pfaff: pfaffian_value,
+        }
+    );
     invert_matrix(&mut a, n as i32);
-
 
     PfaffianState {
         coeffs: fij,
@@ -162,11 +170,15 @@ where
 
 /// Get the ration of the pfaffian given the update.
 /// #TODOC
-pub fn get_pfaffian_ratio(previous_pstate: &PfaffianState, previous_i: usize, new_i: usize, spin: Spin) -> (f64, Vec<f64>, usize)
-{
+pub fn get_pfaffian_ratio(
+    previous_pstate: &PfaffianState,
+    previous_i: usize,
+    new_i: usize,
+    spin: Spin,
+) -> (f64, Vec<f64>, usize) {
     // Rename
-    let indx_up =  &previous_pstate.indices.0;
-    let indx_down =  &previous_pstate.indices.1;
+    let indx_up = &previous_pstate.indices.0;
+    let indx_down = &previous_pstate.indices.1;
     let fij = &previous_pstate.coeffs;
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
@@ -181,40 +193,43 @@ pub fn get_pfaffian_ratio(previous_pstate: &PfaffianState, previous_i: usize, ne
                     continue;
                 }
                 new_b.push(fij[new_i + n_sites * iup]);
-            },
+            }
             Spin::Down => {
                 new_b.push(-fij[iup + n_sites * new_i]);
-            },
+            }
         };
     }
     for idown in indx_down.iter() {
         match spin {
             Spin::Up => {
                 new_b.push(fij[new_i + n_sites * idown]);
-            },
+            }
             Spin::Down => {
                 if *idown == previous_i {
                     new_b.push(0.0);
                     continue;
                 }
                 new_b.push(fij[new_i + n_sites * idown]);
-            },
+            }
         };
     }
 
     // Get the column to replace.
     let col = match spin {
-        Spin::Up =>
-            indx_up.iter().position(|&r| r == previous_i).unwrap(),
-        Spin::Down =>
-            indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
+        Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
+        Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
     };
 
     // Compute the updated pfaffian.
     let pfaff_up;
     unsafe {
-        pfaff_up =
-            ddot(n_elec as i32, &new_b, 1, &previous_pstate.inv_matrix[n_elec*col..n_elec + n_elec*col], 1)
+        pfaff_up = ddot(
+            n_elec as i32,
+            &new_b,
+            1,
+            &previous_pstate.inv_matrix[n_elec * col..n_elec + n_elec * col],
+            1,
+        )
     }
     (pfaff_up, new_b, col)
 }
@@ -238,30 +253,62 @@ pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
             1,
             0.0,
             &mut y,
-            1
+            1,
         );
     }
 
     // We already got the pfaffian ratio
-    let pfaff_ratio = 1.0/y[col];
+    let pfaff_ratio = 1.0 / y[col];
 
     unsafe {
-        // B^-1 = B^-1 - 1./(X[alpha])) * X*Y^T             where Y is the m column of A_inv
-        dger(n, n, -pfaff_ratio, &y, 1, &pstate.inv_matrix[col..col+n as usize*col], n, &mut new_inv, n);
+        // B^-1 = B^-1 - 1./(X[alpha])) * X*Y^T where Y is the m column of A_inv
+        dger(
+            n,
+            n,
+            -pfaff_ratio,
+            &y,
+            1,
+            &pstate.inv_matrix[col..col + n as usize * col],
+            n,
+            &mut new_inv,
+            n,
+        );
 
         // B^-1 = B^-1 + 1./(X[alpha])) * Y*X^T
-        dger(n, n, pfaff_ratio, &pstate.inv_matrix[col..col+n as usize*col], n, &y, 1, &mut new_inv, n);
+        dger(
+            n,
+            n,
+            pfaff_ratio,
+            &pstate.inv_matrix[col..col + n as usize * col],
+            n,
+            &y,
+            1,
+            &mut new_inv,
+            n,
+        );
 
         // adding column alpha of A_inv to B_inv
-        daxpy(n, pfaff_ratio, &pstate.inv_matrix[col..n as usize * (col + 1)], n, &mut new_inv[col..n as usize * (col + 1)], n);
+        daxpy(
+            n,
+            -pfaff_ratio,
+            &pstate.inv_matrix[col..n as usize * (col + 1)],
+            n,
+            &mut new_inv[col..n as usize * (col + 1)],
+            n,
+        );
 
         // adding row alpha of A_inv to B_inv
-        daxpy(n, pfaff_ratio, &pstate.inv_matrix[n as usize * col .. (n+1)as usize * col], 1, &mut new_inv[n as usize * col .. (n+1)as usize * col], 1);
-
+        daxpy(
+            n,
+            -pfaff_ratio,
+            &pstate.inv_matrix[n as usize * col..(n + 1) as usize * col],
+            1,
+            &mut new_inv[n as usize * col..(n + 1) as usize * col],
+            1,
+        );
     }
     pstate.inv_matrix = new_inv;
 }
-
 
 /// Computes the Pfaffian with a workspace query.
 /// # Arguments
@@ -311,8 +358,8 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::pfaffian::{update_pstate, Spin};
     use assert::close;
-    use crate::pfaffian::{Spin, update_pstate};
 
     use super::{construct_matrix_a_from_state, get_pfaffian_ratio};
 
@@ -332,11 +379,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params, state);
         println!("Inverse Matrix: {}", pfstate);
-        close(
-            pfstate.pfaff,
-            1.3,
-            1e-12,
-        );
+        close(pfstate.pfaff, 1.3, 1e-12);
     }
 
     #[test]
@@ -360,11 +403,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(
-            pfstate.pfaff,
-            1.3,
-            1e-12,
-        );
+        close(pfstate.pfaff, 1.3, 1e-12);
         let state2 = crate::FockState {
             spin_up: 5u8,
             spin_down: 3u8,
@@ -397,11 +436,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(
-            pfstate.pfaff,
-            1.3,
-            1e-12,
-        );
+        close(pfstate.pfaff, 1.3, 1e-12);
         let state2 = crate::FockState {
             spin_up: 3u8,
             spin_down: 5u8,
@@ -434,29 +469,29 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
+        println!("------------- Initial State ----------------");
         let mut pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(
-            pfstate.pfaff,
-            1.3,
-            1e-12,
-        );
+        close(pfstate.pfaff, 1.3, 1e-12);
         let state2 = crate::FockState {
-            spin_up: 5u8,
-            spin_down: 3u8,
+            spin_up: 3u8,
+            spin_down: 5u8,
             n_sites: SIZE,
         };
+        println!("------------- Updated State Long way ----------------");
         let pfstate2 = construct_matrix_a_from_state(params, state2);
         println!("Inverse Matrix: {}", pfstate2);
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up);
+        println!("------------- Proposed Update ------------------");
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down);
         println!("Ratio: {}", tmp.0);
         println!("B col: {:?}", tmp.1);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
+        println!("Computed Pfaffian matches updated pfaffian.");
         update_pstate(&mut pfstate, tmp.1, tmp.2);
-        println!("Good: {}", pfstate2);
-        println!("Test: {}", pfstate);
+        println!("------------- Updated Inverse matrix ------------");
+        println!("{}", pfstate);
         for (good, test) in pfstate2.inv_matrix.iter().zip(pfstate.inv_matrix) {
-            //close(*good, test, 1e-12);
+            close(*good, test, 1e-12);
         }
     }
 }

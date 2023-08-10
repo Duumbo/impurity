@@ -2,7 +2,7 @@ use rand::Rng;
 use std::path::Path;
 
 use impurity::gutzwiller::compute_gutzwiller_exp;
-use impurity::hamiltonian::{terme_cin, terme_pot};
+use impurity::hamiltonian::{kinetic, potential};
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::parse::orbitale::parse_orbitale_def;
 use impurity::pfaffian::construct_matrix_a_from_state;
@@ -45,8 +45,8 @@ fn main() {
     };
     let internal_product = compute_internal_product(state, fij.clone(), vij.clone(), gi.clone());
     let rho_x = internal_product * internal_product;
-    let pot = terme_pot(UP, DOWN);
-    let cin = terme_cin(UP, DOWN);
+    let pot = potential(UP, DOWN);
+    let cin = kinetic(UP, DOWN);
     println!("Terme cin to compute: {:?}", cin);
     println!("Terme pot to compute: {:?} * the internal product", pot);
     println!("rho(x): {}", rho_x);
