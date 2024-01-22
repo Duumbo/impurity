@@ -28,7 +28,9 @@ pub struct PfaffianState {
 }
 
 /// The pfaffian state implementation.
-/// #TODOC
+/// # Provides
+/// * __`rebuild_matrix`__ - A function to rebuild the $A^{-1}$ matrix from the lower
+/// triangle.
 impl PfaffianState {
     pub fn rebuild_matrix(&mut self) {
         for i in 0..self.n_elec {
@@ -39,6 +41,7 @@ impl PfaffianState {
     }
 }
 
+// Just a pretty display for the $A^{-1}$ matrix.
 impl fmt::Display for PfaffianState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
         let width = 8;
@@ -57,7 +60,10 @@ impl fmt::Display for PfaffianState {
 }
 
 /// Inverts a matrix.
-/// #TODOC
+/// # Fields
+/// * __`a`__ - The matrix $A$ of the variationnal parameters.
+/// * __`n`__ - The dimension of the matrix, this correspond to the number of
+/// electrons.
 fn invert_matrix(a: &mut [f64], n: i32) {
     // Info output of lapack
     let mut info1: i32 = 0;
@@ -88,7 +94,9 @@ fn invert_matrix(a: &mut [f64], n: i32) {
 }
 
 /// Constructs pfaffian matrix from state.
-/// #TODOC
+/// # Fields
+/// * __`fij`__ - All the variationnal parameters.
+/// * __`state`__ - The state of the system.
 pub fn construct_matrix_a_from_state<T>(fij: Vec<f64>, state: FockState<T>) -> PfaffianState
 where
     T: BitOps + std::fmt::Display,
@@ -168,20 +176,31 @@ where
     }
 }
 
-/// Get the ration of the pfaffian given the update.
-/// #TODOC
+/// Gets the ratio of pfaffian after an update.
+/// # Fields
+/// * __`previous_pstate`__ - The pfaffian state to update.
+/// * __`previous_i`__ - The initial index of the jumping electron.
+/// * __`new_i`__ - The index of the electron after the jump.
+/// * __`spin`__ - The spin of the jumping electron.
+///
+/// # Returns
+/// * __`pfaff_up`__ - The new pfaffian ratio after the update.
+/// * __`new_b`__ - The new column and row in the matrix $A$.
+/// * __`col`__ - The index of the column and row that changed in the matrix $A$.
 pub fn get_pfaffian_ratio(
     previous_pstate: &PfaffianState,
     previous_i: usize,
     new_i: usize,
     spin: Spin,
 ) -> (f64, Vec<f64>, usize) {
+
     // Rename
     let indx_up = &previous_pstate.indices.0;
     let indx_down = &previous_pstate.indices.1;
     let fij = &previous_pstate.coeffs;
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
+
     // Gen new vector b
     let mut new_b: Vec<f64> = Vec::with_capacity(n_elec);
     let off = indx_up.len();
@@ -234,6 +253,14 @@ pub fn get_pfaffian_ratio(
     (pfaff_up, new_b, col)
 }
 
+/// Updates the pfaffian state given a computed ratio from the vector b.
+/// # Fields
+/// * __`pstate`__ - The pfaffian state to update. It will update inplace the
+/// inverse matrix $A^{-1}$.
+/// * __`bm`__ - The vector $b$ needed to update the inverse matrix. This can
+/// be acquired from the function [[get_pfaffian_ratio]].
+/// * __`col`__ - The column and row in the matrix $A$ that changed. This is NOT
+/// correlated to the index of the electron.
 pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
     // Rename and copy when necessary.
     let n = pstate.n_elec as i32;
