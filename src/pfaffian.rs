@@ -1,5 +1,5 @@
 use crate::{BitOps, FockState, SIZE};
-use blas::{daxpy, ddot, dgemv, dger};
+use blas::{daxpy, ddot, dgemv, dger, dgemm};
 use lapack::{dgetrf, dgetri};
 use pfapack::skpfa;
 use std::fmt;
@@ -83,6 +83,7 @@ fn invert_matrix(a: &mut [f64], n: i32) {
 
     // These should never be not 0.
     // If this panics, then a was not of size n, most probably.
+    // This will panic if the matrix is singular
     // Refer to LAPACK error message.
     if !(info1 == 0) || !(info2 == 0) {
         println!(
@@ -91,6 +92,27 @@ fn invert_matrix(a: &mut [f64], n: i32) {
         );
         panic!("Matrix invertion fail.");
     }
+}
+
+fn matrix_product(a: &[f64], b: &[f64]) -> Vec<f64>{
+    let n: i32 = <f64>::sqrt(a.len() as f64) as i32;
+    let mut c = Vec::with_capacity((n*n) as usize);
+    unsafe {
+        c.set_len((n*n) as usize);
+        dgemm(b"N"[0], b"N"[0], n, n, n, 1.0, a, n, b, n, 0.0, &mut c, n)
+    }
+
+    c
+}
+
+fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
+    let mut b = a.clone();
+    for i in 0..n {
+        for j in 0..n {
+            b[i*n + j] = a[j*n +i];
+        }
+    }
+    b
 }
 
 /// Constructs pfaffian matrix from state.
@@ -115,21 +137,26 @@ where
     while i < state.n_sites {
         indices.push(i);
         spin_up.set(i);
-        println!("i: {}", i);
         i = spin_up.leading_zeros() as usize;
     }
     while j < state.n_sites {
         indices2.push(j);
         spin_down.set(j);
-        println!("j: {}", j);
         j = spin_down.leading_zeros() as usize;
     }
-    println!("indices: {:?}, indices2: {:?}", indices, indices2);
     let off = indices.len();
+    let size = state.n_sites;
+
+    // X_{ij}=F_{ij}^{\sigma_i,\sigma_j} - F_{ji}^{\sigma_j,\sigma_i}, tahara2008
+    // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
-            a[ii + (jj + off) * n] = fij[indices[ii] + state.n_sites * indices2[jj]];
-            a[jj + off + ii * n] = -fij[indices[ii] + state.n_sites * indices2[jj]];
+            a[ii + (jj + off) * n] =
+                fij[indices[ii] + size * indices2[jj] + size*size]
+                -fij[indices2[jj] + size * indices[ii] + 2*size*size];
+            a[jj + off + ii * n] =
+                fij[indices2[jj] + size * indices[ii] + 2*size*size]
+                -fij[indices[ii] + size * indices2[jj] + size*size];
         }
     }
     for jj in 0..indices.len() {
@@ -137,8 +164,12 @@ where
             if indices[ii] == indices[jj] {
                 continue;
             }
-            a[ii + jj * n] = fij[indices[ii] + state.n_sites * indices[jj]];
-            a[jj + ii * n] = -fij[indices[ii] + state.n_sites * indices[jj]];
+            a[ii + jj * n] =
+                fij[indices[ii] + size * indices[jj]]
+                -fij[indices[jj] + size * indices[ii]];
+            a[jj + ii * n] =
+                fij[indices[jj] + size * indices[ii]]
+                -fij[indices[ii] + size * indices[jj]];
         }
     }
     for jj in 0..indices2.len() {
@@ -146,13 +177,18 @@ where
             if indices2[ii] == indices2[jj] {
                 continue;
             }
-            a[ii + off + (jj + off) * n] = fij[indices2[ii] + state.n_sites * indices2[jj]];
-            a[jj + off + (ii + off) * n] = -fij[indices2[ii] + state.n_sites * indices2[jj]];
+            a[ii + off + (jj + off) * n] =
+                 fij[indices2[ii] + size * indices2[jj] + 3*size*size]
+                 -fij[indices2[jj] + size * indices2[ii] + 3*size*size];
+            a[jj + off + (ii + off) * n] =
+                 fij[indices2[jj] + size * indices2[ii] + 3*size*size]
+                 -fij[indices2[ii] + size * indices2[jj] + 3*size*size];
         }
     }
 
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
+    let b = a.clone();
     println!(
         "Direct Matrix: {}",
         PfaffianState {
@@ -202,8 +238,9 @@ pub fn get_pfaffian_ratio(
     let n_elec = previous_pstate.n_elec;
 
     // Gen new vector b
+    // X_{ij}=F_{ij}^{\sigma_i,\sigma_j} - F_{ji}^{\sigma_j,\sigma_i}, tahara2008
+    // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
     let mut new_b: Vec<f64> = Vec::with_capacity(n_elec);
-    let off = indx_up.len();
     for iup in indx_up.iter() {
         match spin {
             Spin::Up => {
@@ -211,24 +248,32 @@ pub fn get_pfaffian_ratio(
                     new_b.push(0.0);
                     continue;
                 }
-                new_b.push(fij[new_i + n_sites * iup]);
+                new_b.push(
+                    fij[new_i + n_sites * iup]
+                    -fij[iup + n_sites * new_i]);
             }
             Spin::Down => {
-                new_b.push(-fij[iup + n_sites * new_i]);
+                new_b.push(
+                    fij[new_i + n_sites * iup + 2*n_sites*n_sites]
+                    -fij[iup + n_sites * new_i + n_sites*n_sites]);
             }
         };
     }
     for idown in indx_down.iter() {
         match spin {
             Spin::Up => {
-                new_b.push(fij[new_i + n_sites * idown]);
+                new_b.push(
+                    fij[new_i + n_sites * idown + n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + 2*n_sites*n_sites]);
             }
             Spin::Down => {
                 if *idown == previous_i {
                     new_b.push(0.0);
                     continue;
                 }
-                new_b.push(fij[new_i + n_sites * idown]);
+                new_b.push(
+                    fij[new_i + n_sites * idown + 3*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + 3*n_sites*n_sites]);
             }
         };
     }
@@ -283,7 +328,8 @@ pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
             1,
         );
     }
-
+    println!("Y vector: {:?}", y);
+    println!("Ratio Sherman-Morisson: {}", y[col]);
     // We already got the pfaffian ratio
     let pfaff_ratio = 1.0 / y[col];
 
@@ -385,10 +431,154 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::pfaffian::{update_pstate, Spin};
+    use crate::pfaffian::{update_pstate, Spin, FockState, BitOps, invert_matrix};
+    use rand::{rngs::SmallRng, Rng};
+    use rand::SeedableRng;
     use assert::close;
 
-    use super::{construct_matrix_a_from_state, get_pfaffian_ratio};
+    use super::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
+
+    fn convert_spin_to_array(state: FockState<u8>, n: usize) -> (Vec<usize>, Vec<usize>) {
+        let mut indices: Vec<usize> = Vec::with_capacity(n);
+        let mut indices2: Vec<usize> = Vec::with_capacity(n);
+        let (mut spin_up, mut spin_down) = (state.spin_up, state.spin_down);
+        let (mut i, mut j): (usize, usize) = (
+            spin_up.leading_zeros() as usize,
+            spin_down.leading_zeros() as usize,
+        );
+        while i < state.n_sites {
+            indices.push(i);
+            spin_up.set(i);
+            i = spin_up.leading_zeros() as usize;
+        }
+        while j < state.n_sites {
+            indices2.push(j);
+            spin_down.set(j);
+            j = spin_down.leading_zeros() as usize;
+        }
+        (indices, indices2)
+    }
+
+    fn frobenius_norm(state: PfaffianState) -> f64 {
+        let mut norm: f64 = 0.0;
+        for x in state.inv_matrix.iter() {
+            norm += x*x;
+        }
+        norm
+    }
+
+    #[test]
+    fn test_pfaffian_update_random_no_sign_correction() {
+        const SIZE: usize = 8;
+        let mut rng = SmallRng::seed_from_u64(42);
+        // Size of the system
+        let mut params = vec![0.0; 4 * SIZE * SIZE];
+
+        for test_iter in 0..1000 {
+            println!("test_iter: {}", test_iter);
+            // Generate the variationnal parameters
+            // params[i+8*j] = f_ij
+            for j in 0..2*SIZE {
+                for i in 0..2*SIZE {
+                    params[i + 2*j*SIZE] = rng.gen::<f64>();
+                }
+            }
+
+            // Generate random initial state.
+            let state = crate::FockState {
+                spin_up: rng.gen::<u8>(),
+                spin_down: rng.gen::<u8>(),
+                n_sites: SIZE,
+            };
+            let n = state.spin_up.count_ones() + state.spin_down.count_ones();
+            // Matrix needs to be even sized
+            if n % 2 == 1 { continue;}
+            println!("------------- Initial State ----------------");
+            let mut pfstate = construct_matrix_a_from_state(params.clone(), state);
+            println!("Inverse Matrix: {}", pfstate);
+
+            // Generate random update
+            // Spin up or down?
+            let is_spin_up: bool = rng.gen::<u8>() % 2 == 0;
+            // What index from?
+            // Get where there are electrons
+            let (sups, sdowns) = convert_spin_to_array(state, n as usize);
+            let initial_index =
+                if is_spin_up {
+                    sups[rng.gen::<usize>() % sups.len()]
+                }
+                else {
+                    sdowns[rng.gen::<usize>() % sdowns.len()]
+                };
+            // Where to?
+            // It must not be occupied
+            let mut final_index;
+            if is_spin_up {
+                if sups.len() == SIZE {
+                    continue;
+                }
+                final_index = rng.gen::<usize>() % SIZE;
+                while sups.contains(&final_index) {
+                    final_index = rng.gen::<usize>() % SIZE;
+                }
+            }
+            else {
+                if sdowns.len() == SIZE {
+                    continue;
+                }
+                final_index = rng.gen::<usize>() % SIZE;
+                while sdowns.contains(&final_index) {
+                    final_index = rng.gen::<usize>() % SIZE;
+                }
+            }
+            let mut sup = state.spin_up.clone();
+            let mut sdown = state.spin_down.clone();
+            if is_spin_up {
+                sup.set(initial_index);
+                sup.set(final_index);
+            }
+            else {
+                sdown.set(initial_index);
+                sdown.set(final_index);
+            }
+            let state2 = crate::FockState {
+                spin_up: sup,
+                spin_down: sdown,
+                n_sites: SIZE,
+            };
+
+            println!("------------- Updated State Long way ----------------");
+            let mut pfstate2 = construct_matrix_a_from_state(params.clone(), state2);
+            println!("Inverse Matrix: {}", pfstate2);
+            println!("------------- Proposed Update ------------------");
+            println!("Jumps from: {}, Lands on: {}", initial_index, final_index);
+            println!("Spin is up: {}", is_spin_up);
+            let tmp =
+                if is_spin_up {
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up)
+                }
+                else {
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down)
+                };
+            println!("Ratio: {}", tmp.0);
+            println!("B col: {:?}", tmp.1);
+            println!("Column that changed: {}", tmp.2);
+            println!("Difference: {}", pfstate.pfaff * tmp.0 - pfstate2.pfaff);
+            close(<f64>::abs(pfstate.pfaff * tmp.0), <f64>::abs(pfstate2.pfaff), 1e-12);
+            println!("Computed Pfaffian matches updated pfaffian.");
+
+            println!("------------- Updated Inverse matrix ------------");
+            update_pstate(&mut pfstate, tmp.1, tmp.2);
+            println!("{}", pfstate);
+            invert_matrix(&mut pfstate.inv_matrix, pfstate.n_elec as i32);
+            invert_matrix(&mut pfstate2.inv_matrix, pfstate2.n_elec as i32);
+            println!("Direct Matrix Long Way: {}", pfstate2);
+            println!("Direct Matrix updated: {}", pfstate);
+            println!("Testing frobenius norm:");
+            close(frobenius_norm(pfstate), frobenius_norm(pfstate2), 1e-12);
+            println!("Frobenius norm are equal!");
+        }
+    }
 
     #[test]
     fn test_pfaffian_8sites_u8() {
@@ -399,6 +589,10 @@ mod tests {
         params[7 + SIZE * 6] = 0.8;
         params[6 + SIZE * 7] = 1.0;
         params[6 + SIZE * 6] = 0.5;
+        params[7 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 3*SIZE*SIZE] = 0.8;
+        params[6 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 3*SIZE*SIZE] = 0.5;
         let state = crate::FockState {
             spin_up: 3u8,
             spin_down: 3u8,
@@ -406,7 +600,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params, state);
         println!("Inverse Matrix: {}", pfstate);
-        close(pfstate.pfaff, 1.3, 1e-12);
+        close(pfstate.pfaff, 0.04, 1e-12);
     }
 
     #[test]
@@ -423,6 +617,15 @@ mod tests {
         params[5 + SIZE * 7] = 1.0;
         params[5 + SIZE * 6] = 1.0;
         params[5 + SIZE * 5] = 0.5;
+        params[7 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 3*SIZE*SIZE] = 0.8;
+        params[7 + SIZE * 5 + 3*SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 3*SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + 3*SIZE*SIZE] = 0.5;
         let state = crate::FockState {
             spin_up: 3u8,
             spin_down: 3u8,
@@ -430,7 +633,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(pfstate.pfaff, 1.3, 1e-12);
+        close(pfstate.pfaff, 0.04, 1e-12);
         let state2 = crate::FockState {
             spin_up: 5u8,
             spin_down: 3u8,
@@ -456,6 +659,31 @@ mod tests {
         params[5 + SIZE * 7] = 1.0;
         params[5 + SIZE * 6] = 1.0;
         params[5 + SIZE * 5] = 0.5;
+        params[7 + SIZE * 7 + SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 5 + SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 6 + SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + SIZE*SIZE] = 0.5;
+        params[7 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 2*SIZE*SIZE] = 0.8;
+        params[7 + SIZE * 5 + 2*SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 2*SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + 2*SIZE*SIZE] = 0.5;
+        params[7 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 3*SIZE*SIZE] = 0.8;
+        params[7 + SIZE * 5 + 3*SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 3*SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + 3*SIZE*SIZE] = 0.5;
         let state = crate::FockState {
             spin_up: 3u8,
             spin_down: 3u8,
@@ -463,7 +691,7 @@ mod tests {
         };
         let pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(pfstate.pfaff, 1.3, 1e-12);
+        close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
             spin_up: 3u8,
             spin_down: 5u8,
@@ -491,6 +719,31 @@ mod tests {
         params[5 + SIZE * 7] = 1.0;
         params[5 + SIZE * 6] = 1.0;
         params[5 + SIZE * 5] = 0.5;
+        params[7 + SIZE * 7 + SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 5 + SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 6 + SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + SIZE*SIZE] = 0.5;
+        params[7 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 2*SIZE*SIZE] = 0.8;
+        params[7 + SIZE * 5 + 2*SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 2*SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + 2*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + 2*SIZE*SIZE] = 0.5;
+        params[7 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[7 + SIZE * 6 + 3*SIZE*SIZE] = 0.8;
+        params[7 + SIZE * 5 + 3*SIZE*SIZE] = 0.9;
+        params[6 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[6 + SIZE * 6 + 3*SIZE*SIZE] = 0.5;
+        params[6 + SIZE * 5 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 7 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 6 + 3*SIZE*SIZE] = 1.0;
+        params[5 + SIZE * 5 + 3*SIZE*SIZE] = 0.5;
         let state = crate::FockState {
             spin_up: 3u8,
             spin_down: 3u8,
@@ -499,7 +752,7 @@ mod tests {
         println!("------------- Initial State ----------------");
         let mut pfstate = construct_matrix_a_from_state(params.clone(), state);
         println!("Inverse Matrix: {}", pfstate);
-        close(pfstate.pfaff, 1.3, 1e-12);
+        close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
             spin_up: 3u8,
             spin_down: 5u8,
