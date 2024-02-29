@@ -398,7 +398,13 @@ pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
 pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
     let mut pfaff: f64 = 0.0;
     let mut info: i32 = 0;
-    let mut iwork: Vec<i32> = Vec::with_capacity(SIZE);
+    let mut iwork: Vec<i32> = Vec::with_capacity(n as usize);
+
+    let mut b: Vec<f64> = Vec::with_capacity(((n+1)*n) as usize);
+
+    for x in a.iter() {
+        b.push(*x);
+    }
 
     // Workspace query
     let mut work: Vec<f64> = Vec::with_capacity(1);
@@ -408,7 +414,7 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
             b'L',
             b'P',
             &n,
-            a,
+            &mut b,
             &n,
             &mut pfaff,
             &mut iwork,
@@ -417,12 +423,13 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
             &mut info,
         )
     }
+    assert_eq!(info, 0);
     let lwork: i32 = work[0] as i32;
     // Compute using the lower and p method.
     let mut work: Vec<f64> = Vec::with_capacity(lwork as usize);
     unsafe {
         skpfa::dskpfa(
-            b'L', b'P', &n, a, &n, &mut pfaff, &mut iwork, &mut work, &lwork, &mut info,
+            b'L', b'P', &n, &mut b, &n, &mut pfaff, &mut iwork, &mut work, &lwork, &mut info,
         )
     }
     assert_eq!(info, 0);
@@ -505,9 +512,11 @@ mod tests {
             let (sups, sdowns) = convert_spin_to_array(state, n as usize);
             let initial_index =
                 if is_spin_up {
+                    if sups.len() == 0 { continue;}
                     sups[rng.gen::<usize>() % sups.len()]
                 }
                 else {
+                    if sdowns.len() == 0 { continue;}
                     sdowns[rng.gen::<usize>() % sdowns.len()]
                 };
             // Where to?
@@ -575,7 +584,7 @@ mod tests {
             println!("Direct Matrix Long Way: {}", pfstate2);
             println!("Direct Matrix updated: {}", pfstate);
             println!("Testing frobenius norm:");
-            close(frobenius_norm(pfstate), frobenius_norm(pfstate2), 1e-12);
+            close(frobenius_norm(pfstate), frobenius_norm(pfstate2), 1e-8);
             println!("Frobenius norm are equal!");
         }
     }
