@@ -55,7 +55,24 @@ where
 /// * __`previous_index`__ - The index before the hopping.
 /// * __`new_index`__ - The index after the hopping.
 /// # Example
-/// TODOC
+///
+/// ```rust
+/// use impurity::{FockState, SIZE};
+/// use impurity::gutzwiller::{fast_update_gutzwiller, compute_gutzwiller_exp};
+/// const N_SITES: usize = 8;
+/// let params: Vec<f64> = vec![1.0; SIZE];
+/// let mut res = 0.0;
+/// let state = FockState {
+///     spin_up: 21u8,
+///     spin_down: 53u8,
+///     n_sites: 8,
+/// }; // Should give 3.0
+/// res = compute_gutzwiller_exp(state.clone(), &params, N_SITES);
+/// // Now the benchmark will test the fast-update
+/// // The update is up 3->4
+/// fast_update_gutzwiller(&mut res, &params, &state.spin_up, 3, 4);
+/// assert_eq!(res, 2.0);
+/// ```
 #[inline(always)]
 pub fn fast_update_gutzwiller<T>(
     previous_gutz: &mut f64,
