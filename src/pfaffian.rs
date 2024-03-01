@@ -188,18 +188,6 @@ where
 
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
-    let b = a.clone();
-    println!(
-        "Direct Matrix: {}",
-        PfaffianState {
-            coeffs: fij.clone(),
-            n_elec: n,
-            n_sites: state.n_sites,
-            inv_matrix: a.clone(),
-            indices: (indices.clone(), indices2.clone()),
-            pfaff: pfaffian_value,
-        }
-    );
     invert_matrix(&mut a, n as i32);
 
     PfaffianState {
@@ -328,8 +316,6 @@ pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
             1,
         );
     }
-    println!("Y vector: {:?}", y);
-    println!("Ratio Sherman-Morisson: {}", y[col]);
     // We already got the pfaffian ratio
     let pfaff_ratio = 1.0 / y[col];
 
