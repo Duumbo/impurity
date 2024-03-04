@@ -403,19 +403,12 @@ mod test {
     fn test_jastrow_u8_5sites() {
         let mut rng = SmallRng::seed_from_u64(42);
         for _ in 0..100 {
-            let up = rng.gen::<u8>();
-            let down = rng.gen::<u8>();
-            println!("up, {}, down, {}", up, down);
-            let fock_state1 = FockState {
-                spin_up: up,
-                spin_down: down,
-                n_sites: SIZE,
-            };
-            let fock_state2 = FockState {
-                spin_up: up,
-                spin_down: down,
-                n_sites: SIZE,
-            };
+            // Generate random state
+            let mut fock_state1 = rng.gen::<FockState<u8>>();
+            fock_state1.n_sites = SIZE;
+
+            // Copy the state
+            let fock_state2 = fock_state1.clone();
             let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
             for _ in 0..SIZE * SIZE {
                 jastrow_params.push(rng.gen::<f64>());

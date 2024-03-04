@@ -1,6 +1,8 @@
 extern crate num;
 
 use num::PrimInt;
+use rand::Rng;
+use rand::distributions::{Distribution, Standard};
 pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 
 /// Abstraction layer for common bitwise operations.
@@ -40,6 +42,8 @@ pub trait BitOps:
     fn check(&self, i: usize) -> bool;
     /// Returns an owned instance of an all set bitstring.
     fn ones() -> Self;
+    /// Returns an owned instance of an all unset bitstring.
+    fn zeros() -> Self;
 }
 
 /// BitWise operations for all primitive ints. All methods are inlined and use
@@ -86,6 +90,10 @@ impl<I> BitOps for I
     #[inline(always)]
     fn ones() -> Self {
         <I>::max_value()
+    }
+    #[inline(always)]
+    fn zeros() -> Self {
+        <I>::min_value()
     }
 }
 
@@ -154,6 +162,21 @@ impl BitOps for SpinState {
     fn ones() -> Self {
         let tmp = [0xff; ARRAY_SIZE];
         SpinState{state: tmp, n_elec: ARRAY_SIZE*8}
+    }
+
+    fn zeros() -> Self {
+        let tmp = [0x00; ARRAY_SIZE];
+        SpinState{state: tmp, n_elec: ARRAY_SIZE*8}
+    }
+}
+
+impl Distribution<SpinState> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SpinState {
+        let mut state = [0; ARRAY_SIZE];
+        rng.fill(&mut state);
+        let mut state = SpinState{state, n_elec: 0};
+        state.n_elec = state.count_ones() as usize;
+        state
     }
 }
 
@@ -324,6 +347,47 @@ impl<T: std::ops::Shr<usize, Output = T>> std::ops::Shr<usize> for FockState<T> 
 }
 
 
+// Interface for random state generation
+impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FockState<T> {
+        let su = rng.gen::<T>();
+        let sd = rng.gen::<T>();
+        FockState{
+            spin_up: su,
+            spin_down: sd,
+            n_sites: SIZE,
+        }
+    }
+}
+
+pub trait RandomStateGeneration {
+    fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
+}
+
+impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
+    fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {
+        let mut state = FockState{spin_up: <T>::zeros(), spin_down: <T>::zeros(), n_sites: max_size};
+        let mut i = 0;
+        while i < nelec {
+            let index: usize = rng.gen_range(0..max_size);
+            let spin = rng.gen_bool(0.5);
+            if spin {
+                if !(state.spin_up.check(index)) {
+                    state.spin_up.set(index);
+                    i += 1;
+                }
+            }
+            else {
+                if !(state.spin_down.check(index)) {
+                    state.spin_down.set(index);
+                    i += 1;
+                }
+            }
+        }
+        state
+    }
+}
+
 
 #[cfg(test)]
 mod test {
@@ -331,6 +395,27 @@ mod test {
     use rand::{Rng, SeedableRng};
     use rand::rngs::SmallRng;
     type BitSize = u16;
+
+    #[test]
+    fn test_random_state_generator() {
+        let mut rng = SmallRng::seed_from_u64(42);
+        for i in 0..100{
+            let state: FockState<u128> = FockState::generate_from_nelec(&mut rng, i, 128);
+            assert_eq!(state.spin_up.count_ones() + state.spin_down.count_ones(), i as u32);
+        }
+        for i in 0..50{
+            let state: FockState<u64> = FockState::generate_from_nelec(&mut rng, i, 64);
+            assert_eq!(state.spin_up.count_ones() + state.spin_down.count_ones(), i as u32);
+        }
+        for i in 0..20{
+            let state: FockState<u32> = FockState::generate_from_nelec(&mut rng, i, 32);
+            assert_eq!(state.spin_up.count_ones() + state.spin_down.count_ones(), i as u32);
+        }
+        for i in 0..8{
+            let state: FockState<SpinState> = FockState::generate_from_nelec(&mut rng, i, SIZE);
+            assert_eq!(state.spin_up.count_ones() + state.spin_down.count_ones(), i as u32);
+        }
+    }
 
     #[test]
     fn test_shl() {

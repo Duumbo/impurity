@@ -109,14 +109,12 @@ mod test {
         let mut rng = SmallRng::seed_from_u64(42);
         // This is a random test, run it five times.
         for test_iter in 0..100 {
-            // Random up state.
-            let e_up = rng.gen::<u8>();
-
-            // Random down state.
-            let e_down = rng.gen::<u8>();
+            // Generate random state.
+            let mut state = rng.gen::<FockState<u8>>();
+            state.n_sites = SIZE;
 
             // Get the index that are the same.
-            let mut e_and = e_down & e_up;
+            let mut e_and = state.spin_up & state.spin_down;
             e_and.mask_bits(8);
             let mut ind: Vec<u8> = Vec::new();
             for i in 0..8 {
@@ -125,11 +123,6 @@ mod test {
                 }
             }
 
-            let state = FockState {
-                spin_up: e_up,
-                spin_down: e_down,
-                n_sites: SIZE,
-            };
             let mut rng_params: Vec<f64> = Vec::with_capacity(SIZE);
             for _ in 0..SIZE {
                 rng_params.push(rng.gen::<f64>());
@@ -148,11 +141,6 @@ mod test {
                 compute_gutzwiller_exp(state, &rng_params, 8),
                 manual,
             );
-            let state = FockState {
-                spin_up: e_up,
-                spin_down: e_down,
-                n_sites: SIZE,
-            };
             assert_eq!(compute_gutzwiller_exp(state, &rng_params, 8), manual);
         }
     }
@@ -161,17 +149,10 @@ mod test {
     fn test_fast_update_gutzwiller_exp_u8() {
         let mut rng = SmallRng::seed_from_u64(42);
         for test_iter in 0..100 {
-            // Random up state.
-            let mut e_up = rng.gen::<u8>();
+            // Generate random state.
+            let mut state = rng.gen::<FockState<u8>>();
+            state.n_sites = SIZE;
 
-            // Random down state.
-            let mut e_down = rng.gen::<u8>();
-
-            let mut state = FockState {
-                spin_up: e_up,
-                spin_down: e_down,
-                n_sites: SIZE,
-            };
             let mut rng_params: Vec<f64> = Vec::with_capacity(SIZE);
             for _ in 0..SIZE {
                 rng_params.push(rng.gen::<f64>());
@@ -179,6 +160,8 @@ mod test {
 
             let mut gutz = compute_gutzwiller_exp(state.clone(), &rng_params, 8);
             let spin_update: f64 = rng.gen();
+            let mut e_up = state.spin_up;
+            let mut e_down = state.spin_down;
             for j in 0..12 {
                 if spin_update < 0.5 {
                     let old_index: usize = e_up.leading_zeros().try_into().unwrap();
