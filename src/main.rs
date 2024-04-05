@@ -6,10 +6,10 @@ use impurity::hamiltonian::{kinetic, potential};
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::parse::orbitale::parse_orbitale_def;
 use impurity::pfaffian::construct_matrix_a_from_state;
-use impurity::{FockState, CONS_T, SIZE};
+use impurity::{FockState, CONS_T, RandomStateGeneration};
 
-const UP: u8 = 5;
-const DOWN: u8 = 12;
+const NELEC: usize = 6;
+const SIZE: usize = 8;
 
 fn compute_internal_product(
     state: FockState<u8>,
@@ -20,8 +20,11 @@ fn compute_internal_product(
     let mut pfaffian_state = construct_matrix_a_from_state(fij, state);
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
+    println!("pfaffian");
     let jastrow_exp = compute_jastrow_exp(state, &vij, 8);
+    println!("jastrow");
     let gutz_exp = compute_gutzwiller_exp(state, &gi, 8);
+    println!("gutzwiller");
     let scalar_prod = <f64>::exp(jastrow_exp + gutz_exp) * pfaffian;
     scalar_prod
 }
@@ -38,15 +41,11 @@ fn main() {
     for _ in 0..SIZE {
         gi.push(rng.gen())
     }
-    let state = FockState {
-        spin_up: UP,
-        spin_down: DOWN,
-        n_sites: SIZE,
-    };
+    let state = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
     let internal_product = compute_internal_product(state, fij.clone(), vij.clone(), gi.clone());
     let rho_x = internal_product * internal_product;
-    let pot = potential(UP, DOWN);
-    let cin = kinetic(UP, DOWN);
+    let pot = potential(state.spin_up, state.spin_down);
+    let cin = kinetic(state.spin_up, state.spin_down, state.n_sites);
     println!("Terme cin to compute: {:?}", cin);
     println!("Terme pot to compute: {:?} * the internal product", pot);
     println!("rho(x): {}", rho_x);

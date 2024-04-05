@@ -409,6 +409,7 @@ mod test {
 
             // Copy the state
             let fock_state2 = fock_state1.clone();
+
             let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
             for _ in 0..SIZE * SIZE {
                 jastrow_params.push(rng.gen::<f64>());

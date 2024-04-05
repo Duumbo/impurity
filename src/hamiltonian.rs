@@ -1,4 +1,4 @@
-use crate::{BitOps, FockState, CONS_U, SIZE};
+use crate::{BitOps, FockState, CONS_U};
 
 /// Computes the potential term of the Hamiltonian.
 /// # Arguments
@@ -31,7 +31,7 @@ where
 /// $$
 /// H_T=-t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
 /// $$
-pub fn kinetic<T>(spin_up: T, spin_down: T) -> Vec<FockState<T>>
+pub fn kinetic<T>(spin_up: T, spin_down: T, size: usize) -> Vec<FockState<T>>
 where
     T: BitOps + From<u8>,
 {
@@ -50,42 +50,42 @@ where
     let can_gol_spin_down = spin_down_shr1 ^ spin_down;
 
     out.append(
-        &mut tm(spin_up, can_gor_spin_up, 2)
+        &mut tm(spin_up, can_gor_spin_up, 2, size)
             .into_iter()
             .map(|s| FockState {
                 spin_up: s,
                 spin_down,
-                n_sites: SIZE,
+                n_sites: size,
             })
             .collect::<Vec<FockState<T>>>(),
     );
     out.append(
-        &mut tm(spin_down, can_gor_spin_down, 2)
+        &mut tm(spin_down, can_gor_spin_down, 2, size)
             .into_iter()
             .map(|s| FockState {
                 spin_up,
                 spin_down: s,
-                n_sites: SIZE,
+                n_sites: size,
             })
             .collect::<Vec<FockState<T>>>(),
     );
     out.append(
-        &mut tm(spin_up, can_gol_spin_up, 1)
+        &mut tm(spin_up, can_gol_spin_up, 1, size)
             .into_iter()
             .map(|s| FockState {
                 spin_up: s,
                 spin_down,
-                n_sites: SIZE,
+                n_sites: size,
             })
             .collect::<Vec<FockState<T>>>(),
     );
     out.append(
-        &mut tm(spin_down, can_gol_spin_down, 1)
+        &mut tm(spin_down, can_gol_spin_down, 1, size)
             .into_iter()
             .map(|s| FockState {
                 spin_up,
                 spin_down: s,
-                n_sites: SIZE,
+                n_sites: size,
             })
             .collect::<Vec<FockState<T>>>(),
     );
@@ -93,14 +93,14 @@ where
     out
 }
 
-fn tm<T>(spin: T, mut truth: T, shl_qt: usize) -> Vec<T>
+fn tm<T>(spin: T, mut truth: T, shl_qt: usize, size: usize) -> Vec<T>
 where
     T: BitOps + From<u8>,
 {
     let mut i = truth.leading_zeros();
     let mut out_vec: Vec<T> = Vec::with_capacity(8);
-    while (i as usize) < SIZE {
-        let n = SIZE as i32 - shl_qt as i32 - i as i32;
+    while (i as usize) < size {
+        let n = size as i32 - shl_qt as i32 - i as i32;
         let mask;
         if n < 0 {
             mask = T::from(3).rotate_right(n.abs() as u32);
@@ -108,7 +108,7 @@ where
             mask = T::from(3).rotate_left(n as u32);
         }
         out_vec.push(spin ^ mask);
-        truth ^= T::from(1 << (SIZE - 1 - i as usize));
+        truth ^= T::from(1 << (size - 1 - i as usize));
         i = truth.leading_zeros();
     }
     out_vec

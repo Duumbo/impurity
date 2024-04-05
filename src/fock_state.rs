@@ -362,6 +362,7 @@ impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribu
 
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
+    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32) -> Self;
 }
 
 impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
@@ -385,6 +386,50 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
             }
         }
         state
+    }
+
+    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32) -> FockState<T> {
+        // Test for empty state
+        if (self.spin_up.count_ones() == 0) && (self.spin_down.count_ones() == 0) {
+            return self.clone();
+        }
+        // Test for full state
+        if (self.spin_up.count_ones() == max_size) && (self.spin_down.count_ones() == max_size) {
+            return self.clone();
+        }
+        // Choose up or down
+        let mut spin = rng.gen::<bool>();
+        if spin && (self.spin_up.count_ones() == max_size) { spin = ! spin;}
+        if !spin && (self.spin_down.count_ones() == max_size) { spin = ! spin;}
+        let mut random_to = <u32>::MAX;
+        let random_from;
+        let mut sup = self.spin_up.clone();
+        let mut sdown = self.spin_down.clone();
+        if spin {
+            random_from = rng.gen::<u32>() % self.spin_up.count_ones();
+            while random_to == <u32>::MAX {
+                let index = rng.gen::<u32>() % max_size;
+                if !self.spin_up.check(index as usize) {random_to = index;}
+            }
+            sup.set(random_to as usize);
+            sup.set(random_from as usize);
+        }
+        else {
+            random_from = rng.gen::<u32>() % self.spin_down.count_ones();
+            while random_to == <u32>::MAX {
+                let index = rng.gen::<u32>() % max_size;
+                if !self.spin_down.check(index as usize) {random_to = index;}
+            }
+            sdown.set(random_to as usize);
+            sdown.set(random_from as usize);
+        }
+
+        FockState{
+            n_sites: max_size as usize,
+            spin_up: sup,
+            spin_down: sdown,
+        }
+
     }
 }
 
