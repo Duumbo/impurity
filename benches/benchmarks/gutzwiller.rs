@@ -17,7 +17,7 @@ pub fn bench_gutzwiller_number_of_sites(c: &mut Criterion) {
     let mut res;
 
     // Setup the loop over the number of sites
-    for i in 2..129 {
+    for i in [2, 10, 20, 50, 64, 90, 128] {
         // Setup the random state
         let state: FockState<DATATYPE> = FockState::generate_from_nelec(&mut rng, i, MAX_N_SITES);
 
