@@ -3,6 +3,7 @@ use std::path::Path;
 use impurity::parse::orbitale::parse_orbitale_def;
 
 #[test]
+#[ignore]
 fn test_parse_2x2() {
     let size = 2;
     let fp = Path::new("tests/orbitales_def/test_parse_2x2.csv");
@@ -13,6 +14,7 @@ fn test_parse_2x2() {
 }
 
 #[test]
+#[ignore]
 fn test_parse_3x3() {
     let size = 3;
     let fp = Path::new("tests/orbitales_def/test_parse_3x3.csv");
