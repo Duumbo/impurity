@@ -159,7 +159,27 @@ fn jastrow_single_update<T>(
 /// * __`previous_j`__ - The previous index of the hopped spin.
 /// * __`new_j`__ - The new index of the hopped spin.
 /// # Exemple
-/// TODOC
+///
+/// ```rust
+/// use impurity::{FockState, SIZE};
+/// use impurity::jastrow::{compute_jastrow_exp, fast_update_jastrow};
+/// let params: Vec<f64> = vec![1.0; SIZE * SIZE];
+/// let mut res = 0.0;
+/// let state = FockState {
+///     spin_up: 21u8,
+///     spin_down: 53u8,
+///     n_sites: 8,
+/// };
+/// res = compute_jastrow_exp(state, &params, 8);
+/// // The update is up 3->4
+/// let newstate = FockState {
+///     spin_up: 13u8,
+///     spin_down: 53u8,
+///     n_sites: 8,
+/// };
+/// fast_update_jastrow(&mut res, &params, &state, &newstate, state.n_sites, 3, 4);
+/// assert_eq!(res, -2.0);
+/// ```
 pub fn fast_update_jastrow<T>(
     previous_jas: &mut f64,
     jastrow_params: &[f64],
@@ -383,19 +403,13 @@ mod test {
     fn test_jastrow_u8_5sites() {
         let mut rng = SmallRng::seed_from_u64(42);
         for _ in 0..100 {
-            let up = rng.gen::<u8>();
-            let down = rng.gen::<u8>();
-            println!("up, {}, down, {}", up, down);
-            let fock_state1 = FockState {
-                spin_up: up,
-                spin_down: down,
-                n_sites: SIZE,
-            };
-            let fock_state2 = FockState {
-                spin_up: up,
-                spin_down: down,
-                n_sites: SIZE,
-            };
+            // Generate random state
+            let mut fock_state1 = rng.gen::<FockState<u8>>();
+            fock_state1.n_sites = SIZE;
+
+            // Copy the state
+            let fock_state2 = fock_state1.clone();
+
             let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
             for _ in 0..SIZE * SIZE {
                 jastrow_params.push(rng.gen::<f64>());

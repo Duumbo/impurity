@@ -1,22 +1,38 @@
-use criterion::{black_box, criterion_group, Criterion};
-use impurity::gutzwiller::compute_gutzwiller_exp;
-use impurity::{FockState, SIZE};
+use criterion::{black_box, criterion_group, Criterion, BenchmarkId};
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
+use impurity::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
+use impurity::{FockState, RandomStateGeneration};
 
-pub fn gutzwiller_long(c: &mut Criterion) {
-    // Variationnal parameters:
-    const N_SITES: usize = 8;
-    let params: Vec<f64> = vec![1.0; SIZE];
-    let mut res = 0.0;
-    c.bench_function("Calcul Exponent Gutzwiller 8x8", |b| {
-        b.iter(|| {
-            let state = FockState {
-                spin_up: 21u8,
-                spin_down: 53u8,
-                n_sites: 8,
-            }; // Should give 3.0
-            res = compute_gutzwiller_exp(black_box(state.clone()), black_box(&params), N_SITES);
-        })
-    });
+const MAX_N_SITES: usize = 128;
+type DATATYPE = u128;
+
+pub fn bench_gutzwiller_number_of_sites(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Calcul du projecteur Gutzwiller");
+    let mut rng = SmallRng::seed_from_u64(42);
+
+    // Setup the intial state
+    let mut params: [f64; MAX_N_SITES] = [0.0; MAX_N_SITES];
+    rng.fill(&mut params);
+    let mut res;
+
+    // Setup the loop over the number of sites
+    for i in [2, 10, 20, 50, 64, 90, 128] {
+        // Setup the random state
+        let state: FockState<DATATYPE> = FockState::generate_from_nelec(&mut rng, i, MAX_N_SITES);
+
+        res = compute_gutzwiller_exp(state.clone(), &params, i);
+        group.bench_with_input(BenchmarkId::new("Calcul complet", i), &i,
+            |b, i| b.iter(||{
+                compute_gutzwiller_exp(black_box(state.clone()), black_box(&params), *i);
+            }
+           ));
+        group.bench_with_input(BenchmarkId::new("Fast update", i), &i,
+            |b, _| b.iter(||{
+                fast_update_gutzwiller(&mut res, &params, &state.spin_up, 0, 1);
+            }));
+    }
+    group.finish();
 }
 
-criterion_group!(benches, gutzwiller_long,);
+criterion_group!(benches, bench_gutzwiller_number_of_sites,);

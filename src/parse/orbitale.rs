@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// * __`s`__ - Size of the system.
 pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
     // Parameter reference vector. column packed.
-    let mut fij: Vec<f64> = vec![0.0; s * s];
+    let mut fij: Vec<f64> = vec![0.0; 4 * s * s];
     // Parameter vector. Ordered by "n".
     let mut orbitale_params: Vec<f64> = Vec::new();
     let mut n_orbitale_params: usize = 0;
@@ -43,11 +43,17 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
             Ok(param) => {
                 if n_orbitale_params < param {
                     n_orbitale_params += 1;
-                    orbitale_params.push(rng.gen());
+                    orbitale_params.push(rng.gen::<f64>() * 2.0 - 1.0);
                 }
                 let var_param: f64 = orbitale_params[param - 1];
-                fij[i + j * s] = var_param;
-                fij[j + i * s] = -var_param;
+                fij[i + j * s] = 0.0;
+                fij[j + i * s] = -0.0;
+                fij[i + j * s + s*s] = var_param;
+                fij[j + i * s + s*s] = -var_param;
+                fij[i + j * s + 2*s*s] = var_param;
+                fij[j + i * s + 2*s*s] = -var_param;
+                fij[i + j * s + 3*s*s] = 0.0;
+                fij[j + i * s + 3*s*s] = -0.0;
             }
             Err(error) => {
                 // Add error message.
