@@ -1,4 +1,6 @@
 use std::fmt::Debug;
+#[cfg(feature = "python-interface")]
+use pyo3::prelude::*;
 
 use crate::{BitOps, FockState};
 
@@ -89,6 +91,46 @@ pub fn fast_update_gutzwiller<T>(
     if previous_other_state.check(new_index) {
         *previous_gutz += gutzwiller_params[new_index];
     }
+}
+
+#[cfg(feature = "python-interface")]
+#[pyfunction]
+pub fn gutzwiller_exponent(
+    spin_up: u8,
+    spin_down: u8,
+    gutzwiller_params: [f64; 8],
+    n_sites: usize,
+) -> PyResult<f64>
+{
+    let fock_state = FockState{
+        spin_up,
+        spin_down,
+        n_sites: 8
+    };
+    Ok(compute_gutzwiller_exp(fock_state, &gutzwiller_params, n_sites))
+}
+
+
+#[cfg(feature = "python-interface")]
+#[pyfunction]
+pub fn gutzwiller_fastupdate(
+    previous_coefficient: f64,
+    gutzwiller_params: [f64; 8],
+    previous_state_up: u8,
+    previous_state_down: u8,
+    previous_index: usize,
+    new_index: usize,
+    spin: bool
+) -> PyResult<f64>
+{
+    let mut out = previous_coefficient;
+    if spin {
+        fast_update_gutzwiller(&mut out, &gutzwiller_params, &previous_state_down, previous_index, new_index)
+    }
+    else {
+        fast_update_gutzwiller(&mut out, &gutzwiller_params, &previous_state_up, previous_index, new_index)
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

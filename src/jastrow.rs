@@ -1,3 +1,6 @@
+#[cfg(feature = "python-interface")]
+use pyo3::prelude::*;
+
 use crate::{BitOps, FockState};
 
 /// Computes the Jastrow exponent for a single fock state.
@@ -52,6 +55,7 @@ where
     }
     jastrow_out
 }
+
 
 fn jastrow_undo_update<T>(
     spin_mask: &mut T,
@@ -258,6 +262,60 @@ pub fn fast_update_jastrow<T>(
         true,
         n_sites,
     );
+}
+
+#[cfg(feature = "python-interface")]
+#[pyfunction]
+pub fn jastrow_exponent(
+    spin_up: u8,
+    spin_down: u8,
+    jastrow_params: [f64; 64],
+    n_sites: usize,
+) -> PyResult<f64>
+{
+    let fock_state = FockState{
+        spin_up,
+        spin_down,
+        n_sites: 8
+    };
+    Ok(compute_jastrow_exp(fock_state, &jastrow_params, n_sites))
+}
+
+#[cfg(feature = "python-interface")]
+#[pyfunction]
+pub fn jastrow_fastupdate(
+    previous_coefficient: f64,
+    jastrow_params: [f64; 64],
+    previous_state_up: u8,
+    previous_state_down: u8,
+    new_state_up: u8,
+    new_state_down: u8,
+    n_sites: usize,
+    previous_index: usize,
+    new_index: usize
+) -> PyResult<f64>
+{
+    let mut out = previous_coefficient;
+    let prev = FockState{
+        spin_up: previous_state_up,
+        spin_down: previous_state_down,
+        n_sites
+    };
+    let new = FockState{
+        spin_up: new_state_up,
+        spin_down: new_state_down,
+        n_sites
+    };
+    fast_update_jastrow(
+        &mut out,
+        &jastrow_params,
+        &prev,
+        &new,
+        n_sites,
+        previous_index,
+        new_index
+    );
+    Ok(out)
 }
 
 #[cfg(test)]

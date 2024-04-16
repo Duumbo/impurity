@@ -3,7 +3,9 @@ name = "impurity"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "impurity"
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 pfapack = "0.2.0"
@@ -22,6 +24,8 @@ blas-sys = "0.7.1"
 intel-mkl-src = "0.8.1"
 # Openblas implementation.
 # openblas-src = "0.10.8"
+# For python interface
+pyo3 = {version = "0.21.2", features = ["extension-module"], optional = true}
 
 [dependencies.rand]
 version = "0.8.5"
@@ -37,3 +41,7 @@ harness = false
 
 [package.metadata.docs.rs]
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
+
+[features]
+default = ["python-interface"]
+python-interface = ["dep:pyo3"]

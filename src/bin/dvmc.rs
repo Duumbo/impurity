@@ -20,11 +20,8 @@ fn compute_internal_product(
     let mut pfaffian_state = construct_matrix_a_from_state(fij, state);
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
-    println!("pfaffian");
     let jastrow_exp = compute_jastrow_exp(state, &vij, 8);
-    println!("jastrow");
     let gutz_exp = compute_gutzwiller_exp(state, &gi, 8);
-    println!("gutzwiller");
     let scalar_prod = <f64>::exp(jastrow_exp + gutz_exp) * pfaffian;
     scalar_prod
 }

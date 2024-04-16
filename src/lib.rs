@@ -1,3 +1,6 @@
+#[cfg(feature = "python-interface")]
+use pyo3::prelude::*;
+
 /// Size of the system.
 pub const SIZE: usize = 10;
 
@@ -122,3 +125,15 @@ pub mod gutzwiller;
 /// -t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
 /// $$
 pub mod hamiltonian;
+
+#[cfg(feature = "python-interface")]
+#[pymodule]
+fn impurity(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    use pyo3::wrap_pyfunction;
+
+    m.add_function(wrap_pyfunction!(gutzwiller::gutzwiller_exponent, m)?)?;
+    m.add_function(wrap_pyfunction!(gutzwiller::gutzwiller_fastupdate, m)?)?;
+    m.add_function(wrap_pyfunction!(jastrow::jastrow_exponent, m)?)?;
+    m.add_function(wrap_pyfunction!(jastrow::jastrow_fastupdate, m)?)?;
+    Ok(())
+}
