@@ -3,6 +3,7 @@ extern crate num;
 use num::PrimInt;
 use rand::Rng;
 use rand::distributions::{Distribution, Standard};
+use std::fmt;
 pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 
 /// Abstraction layer for common bitwise operations.
@@ -343,6 +344,21 @@ impl<T: std::ops::Shr<usize, Output = T>> std::ops::Shr<usize> for FockState<T> 
             spin_down: self.spin_down >> u,
             n_sites: self.n_sites,
         }
+    }
+}
+
+impl<T: BitOps> fmt::Display for FockState<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n")?;
+        write!(f, "n_up:   ")?;
+        for i in 0..self.n_sites {
+            write!(f, "{} ", self.spin_up.check(i) as usize)?;
+        }
+        write!(f, ";\nn_down: ")?;
+        for i in 0..self.n_sites {
+            write!(f, "{} ", self.spin_down.check(i) as usize)?;
+        }
+        write!(f, "")
     }
 }
 

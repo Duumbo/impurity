@@ -1,5 +1,6 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
+use blas::{dgemv, ddot};
 
 use crate::{BitOps, FockState};
 
@@ -34,6 +35,7 @@ pub fn compute_jastrow_exp<T>(
 where
     T: BitOps + std::fmt::Display,
 {
+    println!("Enter Jastrow.");
     let mut jastrow_out = 0.0;
     let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
     regular_nor.mask_bits(n_sites);
@@ -46,13 +48,16 @@ where
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
+                println!("Subbed: (i: {}, j: {})", i, k);
                 jastrow_out -= jastrow_params[i + k * n_sites];
             } else {
+                println!("Added: (i: {}, j: {})", i, k);
                 jastrow_out += jastrow_params[i + k * n_sites];
             }
         }
         i = regular_nor.leading_zeros() as usize;
     }
+    println!("Exit Jastrow.");
     jastrow_out
 }
 
@@ -329,43 +334,75 @@ mod test {
     fn compute_jastrow_easy_to_follow<T>(
         fock_state: FockState<T>,
         jastrow_params: &[f64],
-        n_sites: usize,
-        max_size: usize,
+        n_sites: usize
     ) -> f64
     where
         T: BitOps + From<u8>,
     {
-        let mut jastrow_out = 0.0;
+        let mut zeta: Vec<f64> = vec![];
         for i in 0..n_sites {
-            let bit_i: T = ((1 as u8) << (max_size - 1 - i)).into();
-            let ni_down = (fock_state.spin_down & bit_i).count_ones();
-            let ni_up = (fock_state.spin_up & bit_i).count_ones();
-            let ni: isize = (ni_down + ni_up) as isize;
-            for j in 0..n_sites {
-                if i == j {
-                    continue;
-                }
-                let bit_j: T = (1 << (max_size - 1 - j)).into();
-                let nj_down = (fock_state.spin_down & bit_j).count_ones();
-                let nj_up = (fock_state.spin_up & bit_j).count_ones();
-                let nj: isize = (nj_down + nj_up) as isize;
-                jastrow_out += jastrow_params[i + j * n_sites] * ((ni - 1) * (nj - 1)) as f64;
-                if (ni != 1) && (nj != 1) {
-                    println!(
-                        "Added: {}, at ({}, {})",
-                        jastrow_params[i + j * n_sites] * ((ni - 1) * (nj - 1)) as f64,
-                        i,
-                        j
-                    );
-                }
-            }
+            zeta.push(
+                (fock_state.spin_up.check(i) as isize +
+                fock_state.spin_down.check(i) as isize - 1) as f64
+                );
         }
-        jastrow_out * 0.5
+        println!("Zeta: {:?}", zeta);
+        let mut zeta_prime = zeta.clone();
+        unsafe{
+            dgemv(
+                b"N"[0],
+                n_sites as i32,
+                n_sites as i32,
+                1.0,
+                jastrow_params,
+                n_sites as i32,
+                &zeta,
+                1,
+                0.0,
+                &mut zeta_prime,
+                1
+            );
+            ddot(n_sites as i32, &zeta, 1, &zeta_prime, 1) * 0.5
+        }
+    }
+
+    const fn u8_to_spin(u: u8, n_sites: usize) -> u8 {
+        u << (8 - n_sites)
+    }
+
+    #[test]
+    fn test_jastrow_easy() {
+        const NSITES: usize = 3;
+        let jastrow_params: Vec<f64> = vec![
+            0.0, 0.3, 0.7,
+            0.4, 0.0, -0.2,
+            0.5, -0.9, 0.0
+        ];
+        let state1 = FockState{
+            spin_up: u8_to_spin(5, NSITES),
+            spin_down: u8_to_spin(3, NSITES),
+            n_sites: NSITES
+        };
+        let state2 = FockState{
+            spin_up: u8_to_spin(5, NSITES),
+            spin_down: u8_to_spin(7, NSITES),
+            n_sites: NSITES
+        };
+
+        assert_eq!(
+            compute_jastrow_easy_to_follow(state1, &jastrow_params, NSITES),
+            0.0
+        );
+        assert_eq!(
+            compute_jastrow_easy_to_follow(state2, &jastrow_params, NSITES),
+            0.6
+        );
     }
 
     #[test]
     fn test_jastrow_u8() {
         let mut rng = SmallRng::seed_from_u64(42);
+        const NSITES: usize = 8;
         for _ in 0..100 {
             let up = rng.gen::<u8>();
             let down = rng.gen::<u8>();
@@ -383,14 +420,15 @@ mod test {
             for _ in 0..SIZE * SIZE {
                 jastrow_params.push(rng.gen::<f64>());
             }
-            for i in 0..8 {
-                for j in 0..8 {
-                    jastrow_params[j + i * 8] = jastrow_params[i + j * 8];
+            for i in 0..NSITES {
+                for j in 0..NSITES {
+                    jastrow_params[j + i * NSITES] = jastrow_params[i + j * NSITES];
+                    if i == j {jastrow_params[i + j* NSITES] = 0.0;}
                 }
             }
             close(
-                compute_jastrow_exp(fock_state1, &jastrow_params, 8),
-                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, 8, 8),
+                compute_jastrow_exp(fock_state1, &jastrow_params, NSITES),
+                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, NSITES),
                 1e-12,
             )
         }
@@ -460,26 +498,30 @@ mod test {
     #[test]
     fn test_jastrow_u8_5sites() {
         let mut rng = SmallRng::seed_from_u64(42);
+        const NSITES: usize = 5;
         for _ in 0..100 {
             // Generate random state
             let mut fock_state1 = rng.gen::<FockState<u8>>();
-            fock_state1.n_sites = SIZE;
+            fock_state1.n_sites = NSITES;
+            println!("State: {}", fock_state1);
 
             // Copy the state
             let fock_state2 = fock_state1.clone();
 
-            let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
-            for _ in 0..SIZE * SIZE {
+            let mut jastrow_params: Vec<f64> = Vec::with_capacity(NSITES * NSITES);
+            for _ in 0..(NSITES * NSITES) {
                 jastrow_params.push(rng.gen::<f64>());
             }
-            for i in 0..5 {
-                for j in 0..5 {
-                    jastrow_params[j + i * 5] = jastrow_params[i + j * 5];
+            for i in 0..NSITES {
+                for j in 0..NSITES {
+                    jastrow_params[j + i * NSITES] = jastrow_params[i + j * NSITES];
+                    if i == j {jastrow_params[i + j* NSITES] = 0.0;}
                 }
             }
+            println!("Params: {:?}", jastrow_params);
             close(
-                compute_jastrow_exp(fock_state1, &jastrow_params, 5),
-                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, 5, 8),
+                compute_jastrow_exp(fock_state1, &jastrow_params, NSITES),
+                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, NSITES),
                 1e-12,
             )
         }
