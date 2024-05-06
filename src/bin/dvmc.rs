@@ -17,7 +17,7 @@ fn compute_internal_product(
     vij: Vec<f64>,
     gi: Vec<f64>,
 ) -> f64 {
-    let mut pfaffian_state = construct_matrix_a_from_state(fij, state);
+    let mut pfaffian_state = construct_matrix_a_from_state(&fij, state);
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
     let jastrow_exp = compute_jastrow_exp(state, &vij, 8);

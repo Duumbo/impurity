@@ -35,7 +35,6 @@ pub fn compute_jastrow_exp<T>(
 where
     T: BitOps + std::fmt::Display,
 {
-    println!("Enter Jastrow.");
     let mut jastrow_out = 0.0;
     let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
     regular_nor.mask_bits(n_sites);
@@ -48,16 +47,13 @@ where
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
-                println!("Subbed: (i: {}, j: {})", i, k);
                 jastrow_out -= jastrow_params[i + k * n_sites];
             } else {
-                println!("Added: (i: {}, j: {})", i, k);
                 jastrow_out += jastrow_params[i + k * n_sites];
             }
         }
         i = regular_nor.leading_zeros() as usize;
     }
-    println!("Exit Jastrow.");
     jastrow_out
 }
 
@@ -321,6 +317,41 @@ pub fn jastrow_fastupdate(
         new_index
     );
     Ok(out)
+}
+
+#[cfg(feature = "python-interface")]
+#[pyfunction]
+pub fn compute_jastrow_easy_to_follow(
+    sup: u8,
+    sdown: u8,
+    jastrow_params: [f64; 64],
+    n_sites: usize
+) -> f64
+{
+    let mut zeta: Vec<f64> = vec![];
+    for i in 0..n_sites {
+        zeta.push(
+            (sup.check(i) as isize +
+            sdown.check(i) as isize - 1) as f64
+            );
+    }
+    let mut zeta_prime = zeta.clone();
+    unsafe{
+        dgemv(
+            b"N"[0],
+            n_sites as i32,
+            n_sites as i32,
+            1.0,
+            &jastrow_params,
+            n_sites as i32,
+            &zeta,
+            1,
+            0.0,
+            &mut zeta_prime,
+            1
+        );
+        ddot(n_sites as i32, &zeta, 1, &zeta_prime, 1) * 0.5
+    }
 }
 
 #[cfg(test)]

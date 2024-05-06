@@ -22,7 +22,6 @@ pub struct PfaffianState {
     pub n_elec: usize,
     pub n_sites: usize,
     pub pfaff: f64,
-    pub coeffs: Vec<f64>,
     indices: (Vec<usize>, Vec<usize>),
     pub inv_matrix: Vec<f64>,
 }
@@ -119,7 +118,7 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
 /// # Fields
 /// * __`fij`__ - All the variationnal parameters.
 /// * __`state`__ - The state of the system.
-pub fn construct_matrix_a_from_state<T>(fij: Vec<f64>, state: FockState<T>) -> PfaffianState
+pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>) -> PfaffianState
 where
     T: BitOps + std::fmt::Display,
 {
@@ -159,6 +158,20 @@ where
                 -fij[indices[ii] + size * indices2[jj] + size*size];
         }
     }
+    println!("Fij: {:?}", fij);
+    print!("X: ");
+    for jj in 0..indices2.len() {
+        let mut s = "".to_string();
+        for ii in 0..indices.len() {
+            s = format!("{}({} - {}) at ({}, {}), ", s,
+                fij[indices[ii] + size * indices2[jj] + size*size],
+                fij[indices2[jj] + size * indices[ii] + 2*size*size],
+                jj + off, ii
+                );
+        }
+        println!("{}", s);
+    }
+    panic!();
     for jj in 0..indices.len() {
         for ii in 0..indices.len() {
             if indices[ii] == indices[jj] {
@@ -187,11 +200,11 @@ where
     }
 
     // Invert matrix.
+    println!("The matrix X: {:?}", a);
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
 
     PfaffianState {
-        coeffs: fij,
         n_elec: n,
         n_sites: state.n_sites,
         inv_matrix: a,
@@ -216,12 +229,12 @@ pub fn get_pfaffian_ratio(
     previous_i: usize,
     new_i: usize,
     spin: Spin,
+    fij: &[f64],
 ) -> (f64, Vec<f64>, usize) {
 
     // Rename
     let indx_up = &previous_pstate.indices.0;
     let indx_down = &previous_pstate.indices.1;
-    let fij = &previous_pstate.coeffs;
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
 
@@ -487,7 +500,7 @@ mod tests {
             // Matrix needs to be even sized
             if n % 2 == 1 { continue;}
             println!("------------- Initial State ----------------");
-            let mut pfstate = construct_matrix_a_from_state(params.clone(), state);
+            let mut pfstate = construct_matrix_a_from_state(&params, state);
             println!("Inverse Matrix: {}", pfstate);
 
             // Generate random update
@@ -543,17 +556,17 @@ mod tests {
             };
 
             println!("------------- Updated State Long way ----------------");
-            let mut pfstate2 = construct_matrix_a_from_state(params.clone(), state2);
+            let mut pfstate2 = construct_matrix_a_from_state(&params, state2);
             println!("Inverse Matrix: {}", pfstate2);
             println!("------------- Proposed Update ------------------");
             println!("Jumps from: {}, Lands on: {}", initial_index, final_index);
             println!("Spin is up: {}", is_spin_up);
             let tmp =
                 if is_spin_up {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up, &params)
                 }
                 else {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down, &params)
                 };
             println!("Ratio: {}", tmp.0);
             println!("B col: {:?}", tmp.1);
@@ -593,7 +606,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(params, state);
+        let pfstate = construct_matrix_a_from_state(&params, state);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.04, 1e-12);
     }
@@ -626,7 +639,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(params.clone(), state);
+        let pfstate = construct_matrix_a_from_state(&params, state);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.04, 1e-12);
         let state2 = crate::FockState {
@@ -634,9 +647,9 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate2 = construct_matrix_a_from_state(params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2);
         println!("Inverse Matrix: {}", pfstate2);
-        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up).0;
+        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, &params).0;
         close(pfstate.pfaff * pfaff_ratio, pfstate2.pfaff, 1e-12);
     }
 
@@ -684,7 +697,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(params.clone(), state);
+        let pfstate = construct_matrix_a_from_state(&params, state);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
@@ -692,9 +705,9 @@ mod tests {
             spin_down: 5u8,
             n_sites: SIZE,
         };
-        let pfstate2 = construct_matrix_a_from_state(params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2);
         println!("Inverse Matrix: {}", pfstate2);
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
         println!("B: {:?}", tmp.1);
         println!("Ratio: {}", tmp.0);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
@@ -745,7 +758,7 @@ mod tests {
             n_sites: SIZE,
         };
         println!("------------- Initial State ----------------");
-        let mut pfstate = construct_matrix_a_from_state(params.clone(), state);
+        let mut pfstate = construct_matrix_a_from_state(&params, state);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
@@ -754,10 +767,10 @@ mod tests {
             n_sites: SIZE,
         };
         println!("------------- Updated State Long way ----------------");
-        let pfstate2 = construct_matrix_a_from_state(params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2);
         println!("Inverse Matrix: {}", pfstate2);
         println!("------------- Proposed Update ------------------");
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
         println!("Ratio: {}", tmp.0);
         println!("B col: {:?}", tmp.1);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);

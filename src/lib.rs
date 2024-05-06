@@ -62,6 +62,8 @@ include!("fock_state.rs");
 /// $$
 pub mod pfaffian;
 
+pub mod density;
+
 /// Calculate Jastrow coefficients
 /// # Definition
 /// The Jastrow correlation factors is defined as:
@@ -135,5 +137,7 @@ fn impurity(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gutzwiller::gutzwiller_fastupdate, m)?)?;
     m.add_function(wrap_pyfunction!(jastrow::jastrow_exponent, m)?)?;
     m.add_function(wrap_pyfunction!(jastrow::jastrow_fastupdate, m)?)?;
+    m.add_function(wrap_pyfunction!(jastrow::compute_jastrow_easy_to_follow, m)?)?;
+    m.add_function(wrap_pyfunction!(density::compute_internal_product_py, m)?)?;
     Ok(())
 }
