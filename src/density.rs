@@ -35,7 +35,6 @@ pub fn compute_internal_product_py(
     let mut pfaffian_state = construct_matrix_a_from_state(&fij, state);
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
-    println!("The pfaffian: {}", pfaffian);
     Ok(
         pfaffian * (1..=(sup.count_ones() + sdown.count_ones())/2).product::<u32>() as f64,
         )

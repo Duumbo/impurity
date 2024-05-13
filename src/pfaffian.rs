@@ -150,28 +150,14 @@ where
     // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
-            a[ii + (jj + off) * n] =
-                fij[indices[ii] + size * indices2[jj] + size*size]
-                -fij[indices2[jj] + size * indices[ii] + 2*size*size];
-            a[jj + off + ii * n] =
-                fij[indices2[jj] + size * indices[ii] + 2*size*size]
-                -fij[indices[ii] + size * indices2[jj] + size*size];
+            a[ii * n + (jj + off)] =
+                fij[indices2[jj] + size * indices[ii] + size*size]
+                -fij[indices[ii] + size * indices2[jj] + 2*size*size];
+            a[(jj + off) * n + ii] =
+                fij[indices[ii] + size * indices2[jj] + 2*size*size]
+                -fij[indices2[jj] + size * indices[ii] + size*size];
         }
     }
-    println!("Fij: {:?}", fij);
-    print!("X: ");
-    for jj in 0..indices2.len() {
-        let mut s = "".to_string();
-        for ii in 0..indices.len() {
-            s = format!("{}({} - {}) at ({}, {}), ", s,
-                fij[indices[ii] + size * indices2[jj] + size*size],
-                fij[indices2[jj] + size * indices[ii] + 2*size*size],
-                jj + off, ii
-                );
-        }
-        println!("{}", s);
-    }
-    panic!();
     for jj in 0..indices.len() {
         for ii in 0..indices.len() {
             if indices[ii] == indices[jj] {
@@ -200,7 +186,6 @@ where
     }
 
     // Invert matrix.
-    println!("The matrix X: {:?}", a);
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
 
