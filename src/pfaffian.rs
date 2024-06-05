@@ -240,8 +240,8 @@ pub fn get_pfaffian_ratio(
             }
             Spin::Down => {
                 new_b.push(
-                    fij[new_i + n_sites * iup + 2*n_sites*n_sites]
-                    -fij[iup + n_sites * new_i + n_sites*n_sites]);
+                    fij[new_i + n_sites * iup + n_sites*n_sites]
+                    -fij[iup + n_sites * new_i + 2*n_sites*n_sites]);
             }
         };
     }
@@ -249,8 +249,8 @@ pub fn get_pfaffian_ratio(
         match spin {
             Spin::Up => {
                 new_b.push(
-                    fij[new_i + n_sites * idown + n_sites*n_sites]
-                    -fij[idown + n_sites * new_i + 2*n_sites*n_sites]);
+                    fij[new_i + n_sites * idown + 2*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + n_sites*n_sites]);
             }
             Spin::Down => {
                 if *idown == previous_i {
