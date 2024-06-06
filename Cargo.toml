@@ -43,5 +43,5 @@ harness = false
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 
 [features]
-default = ["python-interface"]
+default = []
 python-interface = ["dep:pyo3"]
