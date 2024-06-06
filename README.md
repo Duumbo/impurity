@@ -16,6 +16,7 @@ Implementation of an impurity solver for the Hubbard model.
 - lapack
 - blas
 - pfapack or gfortran
+
 You can choose your implementation for blas, I use intel-mkl. Simply modify the `Cargo.toml` for your preference.
 
 ## Build
