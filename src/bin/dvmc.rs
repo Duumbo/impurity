@@ -1,56 +1,82 @@
 use rand::Rng;
-use std::path::Path;
 
 use impurity::gutzwiller::compute_gutzwiller_exp;
-use impurity::hamiltonian::{kinetic, potential};
 use impurity::jastrow::compute_jastrow_exp;
-use impurity::parse::orbitale::parse_orbitale_def;
 use impurity::pfaffian::construct_matrix_a_from_state;
-use impurity::{FockState, CONS_T, RandomStateGeneration};
+use impurity::{FockState, RandomStateGeneration};
+use impurity::hamiltonian::{potential, kinetic};
 
 const NELEC: usize = 6;
 const SIZE: usize = 8;
+const NMCSAMP: usize = 100000;
+
+struct VarParams {
+    fij: Vec<f64>,
+    vij: Vec<f64>,
+    gi: Vec<f64>
+}
 
 fn compute_internal_product(
     state: FockState<u8>,
-    fij: Vec<f64>,
-    vij: Vec<f64>,
-    gi: Vec<f64>,
+    params: &VarParams
 ) -> f64 {
-    let mut pfaffian_state = construct_matrix_a_from_state(&fij, state);
+    let mut pfaffian_state = construct_matrix_a_from_state(&params.fij, state);
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
-    let jastrow_exp = compute_jastrow_exp(state, &vij, 8);
-    let gutz_exp = compute_gutzwiller_exp(state, &gi, 8);
+    let jastrow_exp = compute_jastrow_exp(state, &params.vij, 8);
+    let gutz_exp = compute_gutzwiller_exp(state, &params.gi, 8);
     let scalar_prod = <f64>::exp(jastrow_exp + gutz_exp) * pfaffian;
-    scalar_prod
+    <f64>::ln(scalar_prod * scalar_prod)
 }
 
-fn main() {
-    let mut rng = rand::thread_rng();
-    let orbitale_fp = Path::new("data/orbitale.csv");
-    let fij = parse_orbitale_def(&orbitale_fp.to_path_buf(), SIZE).unwrap();
+fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: &VarParams) -> (f64, FockState<u8>) {
+    let state2 = state.generate_hopping(rng, SIZE as u32);
+    let ip2 = compute_internal_product(state2, params);
+    (ip2, state2)
+}
+
+fn generate_random_params<R: Rng + ?Sized>(rng: &mut R) -> VarParams {
+    let mut fij: Vec<f64> = Vec::with_capacity(4*SIZE*SIZE);
     let mut vij: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
     for _ in 0..SIZE * SIZE {
         vij.push(rng.gen())
+    }
+    for _ in 0..4*SIZE * SIZE {
+        fij.push(rng.gen())
     }
     let mut gi: Vec<f64> = Vec::with_capacity(SIZE);
     for _ in 0..SIZE {
         gi.push(rng.gen())
     }
-    let state = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-    let internal_product = compute_internal_product(state, fij.clone(), vij.clone(), gi.clone());
-    let rho_x = internal_product * internal_product;
-    let pot = potential(state.spin_up, state.spin_down);
-    let cin = kinetic(state.spin_up, state.spin_down, state.n_sites);
-    println!("Terme cin to compute: {:?}", cin);
-    println!("Terme pot to compute: {:?} * the internal product", pot);
-    println!("rho(x): {}", rho_x);
-    println!("Computing the Hamiltonian terms.");
-    let mut energie = rho_x * pot * internal_product;
-    for s in cin.into_iter() {
-        energie +=
-            rho_x * compute_internal_product(s, fij.clone(), vij.clone(), gi.clone()) * CONS_T;
+    VarParams{fij, vij, gi}
+}
+
+fn compute_hamiltonian(state: FockState<u8>) -> f64 {
+    potential(state)
+}
+
+fn main() {
+    let mut rng = rand::thread_rng();
+    let parameters = generate_random_params(&mut rng);
+    let mut state: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
+    //println!("State: {:?}", state);
+    //println!("Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
+    let lip = compute_internal_product(state, &parameters);
+    let mut energy: f64 = compute_hamiltonian(state);
+    println!("{}", energy);
+    for _ in 0..NMCSAMP {
+        let (lip2, state2) = propose_hopping(&state, &mut rng, &parameters);
+        let ratio = <f64>::exp(lip2 - lip);
+        //println!("Ratio: {}", ratio);
+        let w = rng.gen::<f64>();
+        if ratio >= w {
+            // We ACCEPT
+            //println!("Accept.");
+            state = state2;
+        }
+        energy += compute_hamiltonian(state);
+        println!("{}", energy);
     }
-    println!("Énergie: {}", energie);
+    energy = energy / NMCSAMP as f64;
+    println!("Potential Energy: {}", energy);
 }

@@ -46,14 +46,14 @@ pub fn parse_orbitale_def(fp: &PathBuf, s: usize) -> Result<Vec<f64>> {
                     orbitale_params.push(rng.gen::<f64>() * 2.0 - 1.0);
                 }
                 let var_param: f64 = orbitale_params[param - 1];
-                fij[i + j * s] = 0.0;
-                fij[j + i * s] = -0.0;
+                fij[i + j * s] = var_param;
+                fij[j + i * s] = -var_param;
                 fij[i + j * s + s*s] = var_param;
                 fij[j + i * s + s*s] = -var_param;
                 fij[i + j * s + 2*s*s] = var_param;
                 fij[j + i * s + 2*s*s] = -var_param;
-                fij[i + j * s + 3*s*s] = 0.0;
-                fij[j + i * s + 3*s*s] = -0.0;
+                fij[i + j * s + 3*s*s] = var_param;
+                fij[j + i * s + 3*s*s] = -var_param;
             }
             Err(error) => {
                 // Add error message.

@@ -12,11 +12,11 @@ use crate::{BitOps, FockState, CONS_U};
 /// $$
 /// H_U=U\sum_i n_{i\uparrow}n_{i\downarrow}
 /// $$
-pub fn potential<T>(spin_up: T, spin_down: T) -> f64
+pub fn potential<T>(state: FockState<T>) -> f64
 where
     T: BitOps,
 {
-    ((spin_up & spin_down).count_ones() as f64) * CONS_U
+    ((state.spin_up & state.spin_down).count_ones() as f64) * CONS_U
 }
 
 /// Computes the kinetic term of the Hamiltonian.
