@@ -6,6 +6,13 @@ use rand::distributions::{Distribution, Standard};
 use std::fmt;
 pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 
+
+pub struct VarParams {
+    pub fij: Vec<f64>,
+    pub vij: Vec<f64>,
+    pub gi: Vec<f64>
+}
+
 /// Abstraction layer for common bitwise operations.
 /// # Purpose
 /// The Bitops trait brings in scope an abstraction layer over some common bitwise

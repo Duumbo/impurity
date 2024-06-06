@@ -1,4 +1,5 @@
-use crate::{BitOps, FockState, CONS_U};
+use crate::{density::compute_internal_product, BitOps, FockState, CONS_U};
+use crate::VarParams;
 
 /// Computes the potential term of the Hamiltonian.
 /// # Arguments
@@ -31,10 +32,12 @@ where
 /// $$
 /// H_T=-t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
 /// $$
-pub fn kinetic<T>(spin_up: T, spin_down: T, size: usize) -> Vec<FockState<T>>
+pub fn kinetic<T>(state: FockState<T>, params: &VarParams) -> f64
 where
-    T: BitOps + From<u8>,
+    T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + std::ops::Shl<usize, Output = T>,
 {
+    let (spin_up, spin_down) = (state.spin_up, state.spin_down);
+    let size = state.n_sites;
     let mut out: Vec<FockState<T>> = Vec::with_capacity(8);
     // Rotate the bits left. We don't have to do the right one, because it give
     // the same truth values, just shifted.
@@ -90,7 +93,11 @@ where
             .collect::<Vec<FockState<T>>>(),
     );
 
-    out
+    let mut kin = 0.0;
+    for s in out.into_iter() {
+        kin += <f64>::exp(compute_internal_product(s, params));
+    }
+    kin
 }
 
 fn tm<T>(spin: T, mut truth: T, shl_qt: usize, size: usize) -> Vec<T>
