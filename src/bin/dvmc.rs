@@ -4,8 +4,8 @@ use impurity::{FockState, RandomStateGeneration, VarParams};
 use impurity::density::compute_internal_product;
 use impurity::hamiltonian::{potential, kinetic};
 
-const NELEC: usize = 6;
-const SIZE: usize = 8;
+const NELEC: usize = 4;
+const SIZE: usize = 4;
 const NMCSAMP: usize = 100000;
 
 
@@ -32,8 +32,9 @@ fn generate_random_params<R: Rng + ?Sized>(rng: &mut R) -> VarParams {
 }
 
 fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64 {
-    let kin = <f64>::ln(kinetic(state, params));
-    <f64>::exp(kin - ip) + potential(state)
+    //let kin = <f64>::ln(kinetic(state, params));
+    // <f64>::exp(kin - ip) +
+    potential(state)
 }
 
 fn main() {
@@ -42,6 +43,7 @@ fn main() {
     let mut state: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
     println!("State: {:?}", state);
     println!("Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
+    println!("Nsites: {}", state.n_sites);
     let mut lip = compute_internal_product(state, &parameters);
     let mut energy: f64 = compute_hamiltonian(state, lip, &parameters);
     for _ in 0..NMCSAMP {
@@ -55,6 +57,7 @@ fn main() {
             state = state2;
             lip = lip2;
         }
+        println!("State, up: {:b}, down: {:b}, energy: {}", state.spin_up, state.spin_down, compute_hamiltonian(state, lip, &parameters));
         energy += compute_hamiltonian(state, lip, &parameters);
     }
     energy = energy / NMCSAMP as f64;

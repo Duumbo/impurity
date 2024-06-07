@@ -425,11 +425,14 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
         if spin && (self.spin_up.count_ones() == max_size) { spin = ! spin;}
         if !spin && (self.spin_down.count_ones() == max_size) { spin = ! spin;}
         let mut random_to = <u32>::MAX;
-        let random_from;
+        let mut random_from;
         let mut sup = self.spin_up.clone();
         let mut sdown = self.spin_down.clone();
         if spin {
-            random_from = rng.gen::<u32>() % self.spin_up.count_ones();
+            random_from = rng.gen::<u32>() % self.n_sites as u32;
+            while ! self.spin_up.check(random_from as usize) {
+                random_from = rng.gen::<u32>() % self.n_sites as u32;
+            }
             while random_to == <u32>::MAX {
                 let index = rng.gen::<u32>() % max_size;
                 if !self.spin_up.check(index as usize) {random_to = index;}
@@ -438,7 +441,10 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
             sup.set(random_from as usize);
         }
         else {
-            random_from = rng.gen::<u32>() % self.spin_down.count_ones();
+            random_from = rng.gen::<u32>() % self.n_sites as u32;
+            while ! self.spin_down.check(random_from as usize) {
+                random_from = rng.gen::<u32>() % self.n_sites as u32;
+            }
             while random_to == <u32>::MAX {
                 let index = rng.gen::<u32>() % max_size;
                 if !self.spin_down.check(index as usize) {random_to = index;}

@@ -1,5 +1,5 @@
 use crate::{density::compute_internal_product, BitOps, FockState, CONS_U};
-use crate::VarParams;
+use crate::{VarParams, CONS_T};
 
 /// Computes the potential term of the Hamiltonian.
 /// # Arguments
@@ -95,7 +95,7 @@ where
 
     let mut kin = 0.0;
     for s in out.into_iter() {
-        kin += <f64>::exp(compute_internal_product(s, params));
+        kin += <f64>::exp(compute_internal_product(s, params))*CONS_T;
     }
     kin
 }
