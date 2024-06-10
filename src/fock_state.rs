@@ -26,7 +26,9 @@ pub trait BitOps:
     Copy +
     std::ops::Not<Output = Self> +
     std::cmp::PartialEq +
-    std::ops::Shr<usize, Output = Self>
+    std::ops::Shr<usize, Output = Self> +
+    std::ops::Shl<usize, Output = Self> +
+    std::ops::BitOr<Output = Self>
 {
     /// Provides the number of leading zeros in the bitstring. This gives the
     /// position of the first set bit in the string. This method is consistent
@@ -230,6 +232,19 @@ impl std::ops::BitAnd<SpinState> for SpinState {
 
 }
 
+impl std::ops::BitOr<SpinState> for SpinState {
+    type Output = Self;
+
+    fn bitor(self, other: SpinState) -> Self::Output {
+        let mut tmp: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
+        for i in 0..ARRAY_SIZE {
+            tmp[i] = self.state[i] | other.state[i];
+        }
+        Self {state: tmp, n_elec: self.n_elec}
+    }
+
+}
+
 impl std::ops::Not for SpinState {
     type Output = Self;
 
@@ -370,6 +385,67 @@ impl<T: BitOps> fmt::Display for FockState<T> {
 }
 
 
+// True bit rotation in a subset of the byte
+#[inline(always)]
+fn rot_right<T: BitOps>(s: T, n: usize, size: usize) -> T {
+    (s >> n) | (s << (size - n))
+}
+
+pub trait Hopper {
+    fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, usize)>;
+}
+
+impl<T: BitOps> Hopper for FockState<T> {
+    fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, usize)> {
+        // This is the linear periodic version of the function
+        let sup = self.spin_up;
+        let sdo = self.spin_down;
+        let nelec = (sup.count_ones() + sdo.count_ones()) as usize;
+        let mut out_hoppings: Vec<(usize, usize, usize)> = Vec::with_capacity(4 * nelec);
+
+        // See note 2024-06-08, rotate right gives all the horizontal links.
+        let mut possible_hoppings_up = rot_right(sup, 1, self.n_sites) ^ sup;
+        let mut possible_hoppings_do = rot_right(sdo, 1, self.n_sites) ^ sdo;
+        // We don't need to compute the reverse term, as it is equivalent to
+        // a bit shift, see the same note. This will give all possible hoppings
+        // in a single byte.
+
+        // Consume the up possibilities
+        let mut i: usize = possible_hoppings_up.leading_zeros() as usize;
+        while i < self.n_sites {
+            possible_hoppings_up.set(i);
+            // Check where the electron came from
+            let (came_from, went_to) = if sup.check(i) { // True: came from i, False: came from (i+1)%n
+                (i, ( i + self.n_sites - 1 ) % self.n_sites)
+            } else {
+                (( i + self.n_sites - 1 ) % self.n_sites, i)
+            };
+            out_hoppings.push(
+                (came_from, went_to, 1)
+            );
+            i = possible_hoppings_up.leading_zeros() as usize;
+        }
+
+        // Consume the down possibilities
+        let mut i: usize = possible_hoppings_do.leading_zeros() as usize;
+        while i < self.n_sites {
+            possible_hoppings_do.set(i);
+            // Check where the electron came from
+            let (came_from, went_to) = if sdo.check(i) { // True: came from i, False: came from (i+1)%n
+                (i, ( i + self.n_sites - 1 ) % self.n_sites)
+            } else {
+                (( i + self.n_sites - 1 ) % self.n_sites, i)
+            };
+            out_hoppings.push(
+                (came_from, went_to, 0)
+            );
+            i = possible_hoppings_do.leading_zeros() as usize;
+        }
+
+        out_hoppings
+    }
+}
+
 // Interface for random state generation
 impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FockState<T> {
@@ -410,6 +486,7 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
         }
         state
     }
+
 
     fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32) -> FockState<T> {
         // Test for empty state

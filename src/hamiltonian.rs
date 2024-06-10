@@ -1,4 +1,4 @@
-use crate::{density::compute_internal_product, BitOps, FockState, CONS_U};
+use crate::{density::compute_internal_product, BitOps, FockState, CONS_U, Hopper};
 use crate::{VarParams, CONS_T};
 
 /// Computes the potential term of the Hamiltonian.
@@ -34,89 +34,23 @@ where
 /// $$
 pub fn kinetic<T>(state: FockState<T>, params: &VarParams) -> f64
 where
-    T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + std::ops::Shl<usize, Output = T>,
+    T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display
 {
-    let (spin_up, spin_down) = (state.spin_up, state.spin_down);
-    let size = state.n_sites;
-    let mut out: Vec<FockState<T>> = Vec::with_capacity(8);
-    // Rotate the bits left. We don't have to do the right one, because it give
-    // the same truth values, just shifted.
-    let spin_up_shl1 = spin_up.rotate_left(1);
-    let spin_down_shl1 = spin_down.rotate_left(1);
-    let spin_up_shr1 = spin_up.rotate_right(1);
-    let spin_down_shr1 = spin_down.rotate_right(1);
-
-    // These values are litteraly e- at i can go right.
-    let can_gor_spin_up = spin_up_shl1 ^ spin_up;
-    let can_gor_spin_down = spin_down_shl1 ^ spin_down;
-    let can_gol_spin_up = spin_up_shr1 ^ spin_up;
-    let can_gol_spin_down = spin_down_shr1 ^ spin_down;
-
-    out.append(
-        &mut tm(spin_up, can_gor_spin_up, 2, size)
-            .into_iter()
-            .map(|s| FockState {
-                spin_up: s,
-                spin_down,
-                n_sites: size,
-            })
-            .collect::<Vec<FockState<T>>>(),
-    );
-    out.append(
-        &mut tm(spin_down, can_gor_spin_down, 2, size)
-            .into_iter()
-            .map(|s| FockState {
-                spin_up,
-                spin_down: s,
-                n_sites: size,
-            })
-            .collect::<Vec<FockState<T>>>(),
-    );
-    out.append(
-        &mut tm(spin_up, can_gol_spin_up, 1, size)
-            .into_iter()
-            .map(|s| FockState {
-                spin_up: s,
-                spin_down,
-                n_sites: size,
-            })
-            .collect::<Vec<FockState<T>>>(),
-    );
-    out.append(
-        &mut tm(spin_down, can_gol_spin_down, 1, size)
-            .into_iter()
-            .map(|s| FockState {
-                spin_up,
-                spin_down: s,
-                n_sites: size,
-            })
-            .collect::<Vec<FockState<T>>>(),
-    );
+    let hops = state.generate_all_hoppings();
 
     let mut kin = 0.0;
-    for s in out.into_iter() {
-        kin += <f64>::exp(compute_internal_product(s, params))*CONS_T;
+    for hop in hops.into_iter() {
+        let mut f_state = state;
+        if hop.2 == 0 {
+            f_state.spin_down.set(hop.0);
+            f_state.spin_down.set(hop.1);
+        } else {
+            f_state.spin_up.set(hop.0);
+            f_state.spin_up.set(hop.1);
+        }
+        kin += compute_internal_product(f_state, params)*CONS_T;
     }
+
     kin
 }
 
-fn tm<T>(spin: T, mut truth: T, shl_qt: usize, size: usize) -> Vec<T>
-where
-    T: BitOps + From<u8>,
-{
-    let mut i = truth.leading_zeros();
-    let mut out_vec: Vec<T> = Vec::with_capacity(8);
-    while (i as usize) < size {
-        let n = size as i32 - shl_qt as i32 - i as i32;
-        let mask;
-        if n < 0 {
-            mask = T::from(3).rotate_right(n.abs() as u32);
-        } else {
-            mask = T::from(3).rotate_left(n as u32);
-        }
-        out_vec.push(spin ^ mask);
-        truth ^= T::from(1 << (size - 1 - i as usize));
-        i = truth.leading_zeros();
-    }
-    out_vec
-}

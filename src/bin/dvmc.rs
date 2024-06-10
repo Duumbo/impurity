@@ -32,9 +32,8 @@ fn generate_random_params<R: Rng + ?Sized>(rng: &mut R) -> VarParams {
 }
 
 fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64 {
-    //let kin = <f64>::ln(kinetic(state, params));
-    // <f64>::exp(kin - ip) +
-    potential(state)
+    let kin = <f64>::ln(kinetic(state, params));
+    <f64>::exp(kin - ip) + potential(state)
 }
 
 fn main() {
@@ -57,9 +56,9 @@ fn main() {
             state = state2;
             lip = lip2;
         }
-        println!("State, up: {:b}, down: {:b}, energy: {}", state.spin_up, state.spin_down, compute_hamiltonian(state, lip, &parameters));
+        //println!("State, up: {:b}, down: {:b}, energy: {}", state.spin_up, state.spin_down, compute_hamiltonian(state, lip, &parameters));
         energy += compute_hamiltonian(state, lip, &parameters);
     }
     energy = energy / NMCSAMP as f64;
-    println!("Potential Energy: {}", energy);
+    println!("Energy: {}", energy);
 }
