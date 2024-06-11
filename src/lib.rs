@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 pub const SIZE: usize = 10;
 
 /// Hubbard's model $U$ parameter
-pub static CONS_U: f64 = 1.0;
+pub static CONS_U: f64 = 0.0;
 /// Hubbard's model $t$ parameter
 pub static CONS_T: f64 = -1.0;
 

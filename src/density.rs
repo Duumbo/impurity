@@ -17,8 +17,8 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
     pfaffian_state.rebuild_matrix();
     let jastrow_exp = compute_jastrow_exp(state, &params.vij, state.n_sites);
     let gutz_exp = compute_gutzwiller_exp(state, &params.gi, state.n_sites);
-    let scalar_prod = <f64>::exp(jastrow_exp + gutz_exp) * pfaffian;
-    <f64>::ln(scalar_prod * scalar_prod)
+    let scalar_prod = <f64>::abs(<f64>::exp(jastrow_exp + gutz_exp) * pfaffian);
+    <f64>::ln(scalar_prod) * 2.0
 }
 
 #[cfg(feature = "python-interface")]

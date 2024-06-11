@@ -501,33 +501,33 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
         let mut spin = rng.gen::<bool>();
         if spin && (self.spin_up.count_ones() == max_size) { spin = ! spin;}
         if !spin && (self.spin_down.count_ones() == max_size) { spin = ! spin;}
-        let mut random_to = <u32>::MAX;
-        let mut random_from;
-        let mut sup = self.spin_up.clone();
-        let mut sdown = self.spin_down.clone();
-        if spin {
-            random_from = rng.gen::<u32>() % self.n_sites as u32;
-            while ! self.spin_up.check(random_from as usize) {
-                random_from = rng.gen::<u32>() % self.n_sites as u32;
-            }
-            while random_to == <u32>::MAX {
-                let index = rng.gen::<u32>() % max_size;
-                if !self.spin_up.check(index as usize) {random_to = index;}
-            }
-            sup.set(random_to as usize);
-            sup.set(random_from as usize);
-        }
-        else {
-            random_from = rng.gen::<u32>() % self.n_sites as u32;
-            while ! self.spin_down.check(random_from as usize) {
-                random_from = rng.gen::<u32>() % self.n_sites as u32;
-            }
-            while random_to == <u32>::MAX {
-                let index = rng.gen::<u32>() % max_size;
-                if !self.spin_down.check(index as usize) {random_to = index;}
-            }
-            sdown.set(random_to as usize);
-            sdown.set(random_from as usize);
+        let mut sup = self.spin_up;
+        let mut sdown = self.spin_down;
+
+        if spin { // Spin up
+            let mut possible_hops = rot_right(self.spin_up, 1, self.n_sites);
+            possible_hops.mask_bits(self.n_sites);
+            let n_poss = possible_hops.count_ones();
+            if n_poss == 0 {return *self;}
+
+            // Choose a random electron, i.e. a random int between [1, n_poss]
+            let i = ((rng.gen::<u32>() % n_poss) + 1) as usize;
+            println!("i: {}", i);
+            sup.set(i);
+            sup.set(( i + self.n_sites - 1 ) % self.n_sites);
+
+        } else {
+            let mut possible_hops = rot_right(self.spin_down, 1, self.n_sites);
+            possible_hops.mask_bits(self.n_sites);
+            let n_poss = possible_hops.count_ones();
+            if n_poss == 0 {return *self;}
+
+            // Choose a random electron, i.e. a random int between [1, n_poss]
+            let i = ((rng.gen::<u32>() % n_poss) + 1) as usize;
+            println!("i: {}", i);
+            sdown.set(i);
+            sdown.set(( i + self.n_sites - 1 ) % self.n_sites);
+
         }
 
         FockState{

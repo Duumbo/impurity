@@ -6,7 +6,7 @@ use impurity::hamiltonian::{potential, kinetic};
 
 const NELEC: usize = 4;
 const SIZE: usize = 4;
-const NMCSAMP: usize = 100000;
+const NMCSAMP: usize = 100;
 
 
 fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: &VarParams) -> (f64, FockState<u8>) {
@@ -40,19 +40,21 @@ fn main() {
     let mut rng = rand::thread_rng();
     let parameters = generate_random_params(&mut rng);
     let mut state: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-    println!("State: {:?}", state);
+    println!("State: {}", state);
     println!("Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
     println!("Nsites: {}", state.n_sites);
     let mut lip = compute_internal_product(state, &parameters);
     let mut energy: f64 = compute_hamiltonian(state, lip, &parameters);
     for _ in 0..NMCSAMP {
         let (lip2, state2) = propose_hopping(&state, &mut rng, &parameters);
+        println!("Current state: {}", state);
+        println!("Proposed state: {}", state2);
         let ratio = <f64>::exp(lip2 - lip);
-        //println!("Ratio: {}", ratio);
+        println!("Ratio: {}", ratio);
         let w = rng.gen::<f64>();
         if ratio >= w {
             // We ACCEPT
-            //println!("Accept.");
+            println!("Accept.");
             state = state2;
             lip = lip2;
         }
