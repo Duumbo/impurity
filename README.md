@@ -12,14 +12,21 @@
 ## Purpose
 Implementation of an impurity solver for the Hubbard model.
 
+### Requirements
+- lapack
+- blas
+- pfapack or gfortran
+
+You can choose your implementation for blas, I use intel-mkl. Simply modify the `Cargo.toml` for your preference.
+
 ## Build
 To build, simply
 ```shell
-cargo build
+cargo build -r
 ```
 To run the main script,
 ```shell
-cargo run
+cargo run -r
 ```
 
 # Run Tests
