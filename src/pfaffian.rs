@@ -1,4 +1,4 @@
-use crate::{BitOps, FockState, SIZE};
+use crate::{BitOps, FockState};
 use blas::{daxpy, ddot, dgemv, dger, dgemm};
 use lapack::{dgetrf, dgetri};
 use pfapack::skpfa;
@@ -93,6 +93,7 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     }
 }
 
+#[allow(dead_code)]
 fn matrix_product(a: &[f64], b: &[f64]) -> Vec<f64>{
     let n: i32 = <f64>::sqrt(a.len() as f64) as i32;
     let mut c = Vec::with_capacity((n*n) as usize);
@@ -104,6 +105,7 @@ fn matrix_product(a: &[f64], b: &[f64]) -> Vec<f64>{
     c
 }
 
+#[allow(dead_code)]
 fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
     let mut b = a.clone();
     for i in 0..n {

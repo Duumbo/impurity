@@ -1,6 +1,5 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
-use blas::{dgemv, ddot};
 
 use crate::{BitOps, FockState};
 
@@ -21,8 +20,9 @@ use crate::{BitOps, FockState};
 /// all equal to one. There are $6$ bits set to zero that can each see $5$ other
 /// zeros. The sum should the equal $5\times6=30$ for each spin, totaling $60$.
 /// ```rust
-/// use impurity::{FockState, SIZE};
+/// use impurity::{FockState};
 /// use impurity::jastrow::compute_jastrow_exp;
+/// const SIZE: usize = 8;
 /// let state = FockState { spin_up: 5u8, spin_down: 4u8, n_sites: 8};
 /// let jastrow_params: Vec<f64> = vec![1.0; SIZE*SIZE];
 /// assert_eq!(compute_jastrow_exp(state, &jastrow_params, state.n_sites), 9.0);
@@ -166,8 +166,9 @@ fn jastrow_single_update<T>(
 /// # Exemple
 ///
 /// ```rust
-/// use impurity::{FockState, SIZE};
+/// use impurity::{FockState};
 /// use impurity::jastrow::{compute_jastrow_exp, fast_update_jastrow};
+/// const SIZE: usize = 8;
 /// let params: Vec<f64> = vec![1.0; SIZE * SIZE];
 /// let mut res = 0.0;
 /// let state = FockState {
@@ -357,7 +358,7 @@ pub fn compute_jastrow_easy_to_follow(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{FockState, SIZE};
+    use crate::{FockState};
     use assert::close;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
@@ -432,6 +433,7 @@ mod test {
 
     #[test]
     fn test_jastrow_u8() {
+        const SIZE: usize = 8;
         let mut rng = SmallRng::seed_from_u64(42);
         const NSITES: usize = 8;
         for _ in 0..100 {
@@ -467,6 +469,7 @@ mod test {
 
     #[test]
     fn test_fast_update_jastrow_u8() {
+        const SIZE: usize = 8;
         let mut rng = SmallRng::seed_from_u64(42);
         let mut up = rng.gen::<u8>();
         let down = rng.gen::<u8>();

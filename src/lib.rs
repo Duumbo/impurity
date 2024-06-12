@@ -1,14 +1,6 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-/// Size of the system.
-pub const SIZE: usize = 10;
-
-/// Hubbard's model $U$ parameter
-pub static CONS_U: f64 = 0.0;
-/// Hubbard's model $t$ parameter
-pub static CONS_T: f64 = -1.0;
-
 /// Input file parsing util.
 /// # Subfiles
 /// * __`orbitale.csv`__ - Variationnal parameters for the orbital. In csv
@@ -18,6 +10,9 @@ pub mod parse;
 
 // Have the FockState struct at the root.
 include!("fock_state.rs");
+
+// Include the params definition
+include!("params.rs");
 
 /// Module to calculate pfaffian
 /// # Usage

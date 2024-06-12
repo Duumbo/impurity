@@ -37,6 +37,7 @@ where
     T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display
 {
     let hops = state.generate_all_hoppings();
+    println!("All hoppings: {:?}", hops);
 
     let mut kin = 0.0;
     for hop in hops.into_iter() {

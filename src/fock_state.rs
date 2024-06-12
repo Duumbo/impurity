@@ -4,14 +4,6 @@ use num::PrimInt;
 use rand::Rng;
 use rand::distributions::{Distribution, Standard};
 use std::fmt;
-pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
-
-
-pub struct VarParams {
-    pub fij: Vec<f64>,
-    pub vij: Vec<f64>,
-    pub gi: Vec<f64>
-}
 
 /// Abstraction layer for common bitwise operations.
 /// # Purpose
@@ -395,7 +387,7 @@ pub trait Hopper {
     fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, usize)>;
 }
 
-impl<T: BitOps> Hopper for FockState<T> {
+impl<T: BitOps + From<u8>> Hopper for FockState<T> {
     fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, usize)> {
         // This is the linear periodic version of the function
         let sup = self.spin_up;
@@ -403,43 +395,44 @@ impl<T: BitOps> Hopper for FockState<T> {
         let nelec = (sup.count_ones() + sdo.count_ones()) as usize;
         let mut out_hoppings: Vec<(usize, usize, usize)> = Vec::with_capacity(4 * nelec);
 
-        // See note 2024-06-08, rotate right gives all the horizontal links.
-        let mut possible_hoppings_up = rot_right(sup, 1, self.n_sites) ^ sup;
-        let mut possible_hoppings_do = rot_right(sdo, 1, self.n_sites) ^ sdo;
-        // We don't need to compute the reverse term, as it is equivalent to
-        // a bit shift, see the same note. This will give all possible hoppings
-        // in a single byte.
+        for j in 1..SIZE/2 + 1 {
+            // See note 2024-06-08, rotate right gives all the horizontal links.
+            // We need to go to j up to SIZE / 2
+            let bitmask = <T>::from(HOP_BITMASKS[j - 1]);
+            let mut possible_hoppings_up = (rot_right(sup, j, self.n_sites) ^ sup) & bitmask;
+            let mut possible_hoppings_do = (rot_right(sdo, j, self.n_sites) ^ sdo) & bitmask;
 
-        // Consume the up possibilities
-        let mut i: usize = possible_hoppings_up.leading_zeros() as usize;
-        while i < self.n_sites {
-            possible_hoppings_up.set(i);
-            // Check where the electron came from
-            let (came_from, went_to) = if sup.check(i) { // True: came from i, False: came from (i+1)%n
-                (i, ( i + self.n_sites - 1 ) % self.n_sites)
-            } else {
-                (( i + self.n_sites - 1 ) % self.n_sites, i)
-            };
-            out_hoppings.push(
-                (came_from, went_to, 1)
-            );
-            i = possible_hoppings_up.leading_zeros() as usize;
-        }
+            // Consume the up possibilities
+            let mut i: usize = possible_hoppings_up.leading_zeros() as usize;
+            while i < self.n_sites {
+                possible_hoppings_up.set(i);
+                // Check where the electron came from
+                let (came_from, went_to) = if sup.check(i) { // True: came from i, False: came from (i+1)%n
+                    (i, ( i + self.n_sites - j ) % self.n_sites)
+                } else {
+                    (( i + self.n_sites - j ) % self.n_sites, i)
+                };
+                out_hoppings.push(
+                    (came_from, went_to, 1)
+                );
+                i = possible_hoppings_up.leading_zeros() as usize;
+            }
 
-        // Consume the down possibilities
-        let mut i: usize = possible_hoppings_do.leading_zeros() as usize;
-        while i < self.n_sites {
-            possible_hoppings_do.set(i);
-            // Check where the electron came from
-            let (came_from, went_to) = if sdo.check(i) { // True: came from i, False: came from (i+1)%n
-                (i, ( i + self.n_sites - 1 ) % self.n_sites)
-            } else {
-                (( i + self.n_sites - 1 ) % self.n_sites, i)
-            };
-            out_hoppings.push(
-                (came_from, went_to, 0)
-            );
-            i = possible_hoppings_do.leading_zeros() as usize;
+            // Consume the down possibilities
+            let mut i: usize = possible_hoppings_do.leading_zeros() as usize;
+            while i < self.n_sites {
+                possible_hoppings_do.set(i);
+                // Check where the electron came from
+                let (came_from, went_to) = if sdo.check(i) { // True: came from i, False: came from (i+1)%n
+                    (i, ( i + self.n_sites - j ) % self.n_sites)
+                } else {
+                    (( i + self.n_sites - j ) % self.n_sites, i)
+                };
+                out_hoppings.push(
+                    (came_from, went_to, 0)
+                );
+                i = possible_hoppings_do.leading_zeros() as usize;
+            }
         }
 
         out_hoppings
@@ -464,7 +457,7 @@ pub trait RandomStateGeneration {
     fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32) -> Self;
 }
 
-impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
+impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {
         let mut state = FockState{spin_up: <T>::zeros(), spin_down: <T>::zeros(), n_sites: max_size};
         let mut i = 0;
@@ -489,45 +482,21 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
 
 
     fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32) -> FockState<T> {
-        // Test for empty state
-        if (self.spin_up.count_ones() == 0) && (self.spin_down.count_ones() == 0) {
-            return self.clone();
-        }
-        // Test for full state
-        if (self.spin_up.count_ones() == max_size) && (self.spin_down.count_ones() == max_size) {
-            return self.clone();
-        }
-        // Choose up or down
-        let mut spin = rng.gen::<bool>();
-        if spin && (self.spin_up.count_ones() == max_size) { spin = ! spin;}
-        if !spin && (self.spin_down.count_ones() == max_size) { spin = ! spin;}
+        // This is cheap, don't sweat it
+        let all_hops = self.generate_all_hoppings();
+
+        let rand_index = rng.gen_range(0..all_hops.len());
+        let hop = all_hops[rand_index];
+
         let mut sup = self.spin_up;
         let mut sdown = self.spin_down;
 
-        if spin { // Spin up
-            let mut possible_hops = rot_right(self.spin_up, 1, self.n_sites);
-            possible_hops.mask_bits(self.n_sites);
-            let n_poss = possible_hops.count_ones();
-            if n_poss == 0 {return *self;}
-
-            // Choose a random electron, i.e. a random int between [1, n_poss]
-            let i = ((rng.gen::<u32>() % n_poss) + 1) as usize;
-            println!("i: {}", i);
-            sup.set(i);
-            sup.set(( i + self.n_sites - 1 ) % self.n_sites);
-
+        if hop.2 == 1 {
+            sup.set(hop.0);
+            sup.set(hop.1);
         } else {
-            let mut possible_hops = rot_right(self.spin_down, 1, self.n_sites);
-            possible_hops.mask_bits(self.n_sites);
-            let n_poss = possible_hops.count_ones();
-            if n_poss == 0 {return *self;}
-
-            // Choose a random electron, i.e. a random int between [1, n_poss]
-            let i = ((rng.gen::<u32>() % n_poss) + 1) as usize;
-            println!("i: {}", i);
-            sdown.set(i);
-            sdown.set(( i + self.n_sites - 1 ) % self.n_sites);
-
+            sdown.set(hop.0);
+            sdown.set(hop.1);
         }
 
         FockState{
@@ -543,7 +512,7 @@ impl<T: BitOps> RandomStateGeneration for FockState<T> where Standard: Distribut
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::{Rng, SeedableRng};
+    use rand::SeedableRng;
     use rand::rngs::SmallRng;
     type BitSize = u16;
 
@@ -568,54 +537,4 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_shl() {
-        let mut rng = SmallRng::seed_from_u64(42);
-        for _ in 0..1000 {
-            let mut known_good = [0; ARRAY_SIZE];
-            for i in 0..ARRAY_SIZE {
-                known_good[i] = rng.gen::<u8>();
-            }
-            let mut s = [0; ARRAY_SIZE];
-            let mut m = [0; ARRAY_SIZE];
-            for i in 0..ARRAY_SIZE {
-                s[i] = known_good[ARRAY_SIZE - 1 - i];
-                m[i] = 0x00;
-            }
-            let tester = SpinState {state: s, n_elec: 0};
-
-            for i in 0..16 {
-                let rotated = <BitSize>::from_ne_bytes(known_good).rotate_left(i).to_ne_bytes();
-                println!("by: {}, SpinState: {:?}, Good: {:?}", i, (tester << i as usize).state, rotated);
-                for j in 0..ARRAY_SIZE {
-                    assert_eq!((tester << i as usize).state[j], rotated[j]);
-                }
-            }
-        }
-    }
-
-
-    #[test]
-    fn test_shr() {
-        let mut rng = SmallRng::seed_from_u64(42);
-        for _ in 0..1000 {
-            let mut known_good = [0; ARRAY_SIZE];
-            for i in 0..ARRAY_SIZE {
-                known_good[i] = rng.gen::<u8>();
-            }
-            let mut s = [0; ARRAY_SIZE];
-            let mut m = [0; ARRAY_SIZE];
-            for i in 0..ARRAY_SIZE {
-                s[i] = known_good[ARRAY_SIZE - 1 - i];
-                m[i] = 0x00;
-            }
-            let tester = SpinState {state: s, n_elec: 0};
-            for i in 0..16 {
-                let rotated = <BitSize>::from_ne_bytes(known_good).rotate_right(i).to_ne_bytes();
-                for j in 0..ARRAY_SIZE {
-                    assert_eq!((tester >> i as usize).state[j], rotated[j]);
-                }
-            }
-        }
-    }
 }

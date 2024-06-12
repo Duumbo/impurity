@@ -20,8 +20,9 @@ use crate::{BitOps, FockState};
 /// all equal to one. Only $2$ bits are set on both bitstrings, so the result
 /// should be $2$.
 /// ```rust
-/// use impurity::{FockState, SIZE};
+/// use impurity::{FockState};
 /// use impurity::gutzwiller::compute_gutzwiller_exp;
+/// const SIZE: usize = 8;
 /// let state = FockState { spin_up: 5u8, spin_down: 5u8, n_sites: 8};
 /// let gutzwiller_params: Vec<f64> = vec![1.0; SIZE];
 /// assert_eq!(compute_gutzwiller_exp(state, &gutzwiller_params, state.n_sites), 2.0);
@@ -59,15 +60,15 @@ where
 /// # Example
 ///
 /// ```rust
-/// use impurity::{FockState, SIZE};
+/// use impurity::{FockState};
 /// use impurity::gutzwiller::{fast_update_gutzwiller, compute_gutzwiller_exp};
 /// const N_SITES: usize = 8;
-/// let params: Vec<f64> = vec![1.0; SIZE];
+/// let params: Vec<f64> = vec![1.0; N_SITES];
 /// let mut res = 0.0;
 /// let state = FockState {
 ///     spin_up: 21u8,
 ///     spin_down: 53u8,
-///     n_sites: 8,
+///     n_sites: N_SITES,
 /// }; // Should give 3.0
 /// res = compute_gutzwiller_exp(state.clone(), &params, N_SITES);
 /// // Now the benchmark will test the fast-update
@@ -136,7 +137,7 @@ pub fn gutzwiller_fastupdate(
 #[cfg(test)]
 mod test {
     use crate::gutzwiller::fast_update_gutzwiller;
-    use crate::{BitOps, FockState, SpinState, ARRAY_SIZE, SIZE};
+    use crate::{BitOps, FockState, SpinState};
     use assert::close;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
@@ -148,6 +149,7 @@ mod test {
 
     #[test]
     fn test_gutzwiller_exp_u8() {
+        const SIZE: usize = 8;
         let mut rng = SmallRng::seed_from_u64(42);
         // This is a random test, run it five times.
         for test_iter in 0..100 {
@@ -189,6 +191,7 @@ mod test {
 
     #[test]
     fn test_fast_update_gutzwiller_exp_u8() {
+        const SIZE: usize = 8;
         let mut rng = SmallRng::seed_from_u64(42);
         for test_iter in 0..100 {
             // Generate random state.
@@ -266,6 +269,7 @@ mod test {
 
     #[test]
     fn test_fast_update_gutzwiller_exp_u8_5sites() {
+        const SIZE: usize = 8;
         const N_SITES: usize = 5;
         let mut rng = SmallRng::seed_from_u64(42);
         for test_iter in 0..100 {
@@ -351,6 +355,7 @@ mod test {
 
     #[test]
     fn test_gutzwiller_exp_spin_state() {
+        use crate::{SIZE, ARRAY_SIZE};
         let mut rng = SmallRng::seed_from_u64(42);
         // This is a random test, run it five times.
         for test_iter in 0..10 {

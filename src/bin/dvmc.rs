@@ -1,6 +1,8 @@
 use rand::Rng;
+use std::ptr::addr_of;
 
 use impurity::{FockState, RandomStateGeneration, VarParams};
+use impurity::{FIJ, GI, VIJ};
 use impurity::density::compute_internal_product;
 use impurity::hamiltonian::{potential, kinetic};
 
@@ -15,21 +17,21 @@ fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: 
     (ip2, state2)
 }
 
-fn generate_random_params<R: Rng + ?Sized>(rng: &mut R) -> VarParams {
-    let mut fij: Vec<f64> = Vec::with_capacity(4*SIZE*SIZE);
-    let mut vij: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
-    for _ in 0..SIZE * SIZE {
-        vij.push(rng.gen())
-    }
-    for _ in 0..4*SIZE * SIZE {
-        fij.push(rng.gen())
-    }
-    let mut gi: Vec<f64> = Vec::with_capacity(SIZE);
-    for _ in 0..SIZE {
-        gi.push(rng.gen())
-    }
-    VarParams{fij, vij, gi}
-}
+//fn generate_random_params<R: Rng + ?Sized>(rng: &mut R) -> VarParams {
+//    let mut fij: Vec<f64> = Vec::with_capacity(4*SIZE*SIZE);
+//    let mut vij: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
+//    for _ in 0..SIZE * SIZE {
+//        vij.push(rng.gen())
+//    }
+//    for _ in 0..4*SIZE * SIZE {
+//        fij.push(rng.gen())
+//    }
+//    let mut gi: Vec<f64> = Vec::with_capacity(SIZE);
+//    for _ in 0..SIZE {
+//        gi.push(rng.gen())
+//    }
+//    VarParams{fij, vij, gi}
+//}
 
 fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64 {
     let kin = <f64>::ln(kinetic(state, params));
@@ -38,7 +40,13 @@ fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64
 
 fn main() {
     let mut rng = rand::thread_rng();
-    let parameters = generate_random_params(&mut rng);
+    //let parameters = generate_random_params(&mut rng);
+    let parameters = unsafe { VarParams {
+        fij: addr_of!(FIJ) as *const f64,
+        gi: addr_of!(GI) as *const f64,
+        vij: addr_of!(VIJ) as *const f64
+    }};
+
     let mut state: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
     println!("State: {}", state);
     println!("Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());

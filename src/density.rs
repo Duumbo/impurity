@@ -1,10 +1,13 @@
 #[cfg(feature = "python-interface")]
 use pyo3::{pyfunction, PyResult};
 
+use std::slice::from_raw_parts as slice;
+
 use crate::jastrow::compute_jastrow_exp;
 use crate::gutzwiller::compute_gutzwiller_exp;
 use crate::pfaffian::construct_matrix_a_from_state;
 use crate::{FockState, VarParams, BitOps};
+use crate::{NFIJ, NVIJ, NGI};
 
 pub fn compute_internal_product<T>(
     state: FockState<T>,
@@ -12,11 +15,15 @@ pub fn compute_internal_product<T>(
 ) -> f64
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
 {
-    let mut pfaffian_state = construct_matrix_a_from_state(&params.fij, state);
+    let (mut pfaffian_state, jastrow_exp, gutz_exp) = unsafe {
+        (
+            construct_matrix_a_from_state(slice(params.fij, NFIJ), state),
+            compute_jastrow_exp(state, slice(params.vij, NVIJ), state.n_sites),
+            compute_gutzwiller_exp(state, slice(params.gi, NGI), state.n_sites)
+        )
+    };
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
-    let jastrow_exp = compute_jastrow_exp(state, &params.vij, state.n_sites);
-    let gutz_exp = compute_gutzwiller_exp(state, &params.gi, state.n_sites);
     let scalar_prod = <f64>::abs(<f64>::exp(jastrow_exp + gutz_exp) * pfaffian);
     <f64>::ln(scalar_prod) * 2.0
 }
