@@ -359,6 +359,7 @@ pub fn compute_jastrow_easy_to_follow(
 mod test {
     use super::*;
     use crate::{FockState};
+    use blas::{ddot, dgemv};
     use assert::close;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
