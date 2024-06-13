@@ -2,13 +2,13 @@ use rand::Rng;
 use std::ptr::addr_of;
 
 use impurity::{FockState, RandomStateGeneration, VarParams};
-use impurity::{FIJ, GI, VIJ};
+use impurity::{FIJ, GI, VIJ, SIZE};
 use impurity::density::compute_internal_product;
 use impurity::hamiltonian::{potential, kinetic};
+use impurity::HOP_BITMASKS;
 
-const NELEC: usize = 4;
-const SIZE: usize = 4;
-const NMCSAMP: usize = 100;
+const NELEC: usize = 8;
+const NMCSAMP: usize = 1000;
 
 
 fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: &VarParams) -> (f64, FockState<u8>) {
@@ -34,8 +34,8 @@ fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: 
 //}
 
 fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64 {
-    let kin = <f64>::ln(kinetic(state, params));
-    <f64>::exp(kin - ip) + potential(state)
+    let kin = kinetic(state, params);
+    (kin / <f64>::exp(ip)) + potential(state)
 }
 
 fn main() {
@@ -71,4 +71,5 @@ fn main() {
     }
     energy = energy / NMCSAMP as f64;
     println!("Energy: {}", energy);
+    println!("Hop bitmasks: {:08b}, {:08b}", HOP_BITMASKS[0], HOP_BITMASKS[1]);
 }

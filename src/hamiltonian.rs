@@ -1,4 +1,4 @@
-use crate::{density::compute_internal_product, BitOps, FockState, CONS_U, Hopper};
+use crate::{density::compute_internal_product, BitOps, FockState, CONS_U, Hopper, HOPPINGS, SIZE};
 use crate::{VarParams, CONS_T};
 
 /// Computes the potential term of the Hamiltonian.
@@ -49,7 +49,7 @@ where
             f_state.spin_up.set(hop.0);
             f_state.spin_up.set(hop.1);
         }
-        kin += compute_internal_product(f_state, params)*CONS_T;
+        kin += compute_internal_product(f_state, params)*CONS_T*HOPPINGS[hop.0 + hop.1*SIZE];
     }
 
     kin
