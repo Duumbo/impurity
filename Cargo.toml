@@ -8,6 +8,8 @@ name = "impurity"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+log = "0.4.2"
+env_logger = "0.11.3"
 pfapack = "0.2.0"
 csv = "1.2.2"
 derive_more = "0.99.16"
@@ -45,3 +47,4 @@ rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 [features]
 default = []
 python-interface = ["dep:pyo3"]
+verbose = []

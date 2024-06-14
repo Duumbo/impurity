@@ -37,7 +37,6 @@ where
     T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display
 {
     let hops = state.generate_all_hoppings();
-    println!("All hoppings: {:?}", hops);
 
     let mut kin = 0.0;
     for hop in hops.into_iter() {
@@ -49,7 +48,7 @@ where
             f_state.spin_up.set(hop.0);
             f_state.spin_up.set(hop.1);
         }
-        kin += compute_internal_product(f_state, params)*CONS_T*HOPPINGS[hop.0 + hop.1*SIZE];
+        kin += <f64>::exp(compute_internal_product(f_state, params))*CONS_T*HOPPINGS[hop.0 + hop.1*SIZE];
     }
 
     kin
