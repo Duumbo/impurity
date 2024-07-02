@@ -5,7 +5,7 @@ pub type BitStruct = u8;
 pub const NBITS: usize = 8;
 
 /// Hubbard's model $U$ parameter
-pub static CONS_U: f64 = 0.0;
+pub static CONS_U: f64 = 1.0;
 /// Hubbard's model $t$ parameter
 pub static CONS_T: f64 = -1.0;
 
@@ -67,10 +67,10 @@ pub static mut GI: [f64; NGI] = [
 ];
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
-    0.0, 1.0, 1.0, 1.0,
-    1.0, 0.0, 1.0, 1.0,
-    1.0, 1.0, 0.0, 1.0,
-    1.0, 1.0, 1.0, 0.0
+    0.0, 1.0, 1.0, 0.0,
+    1.0, 0.0, 0.0, 1.0,
+    1.0, 0.0, 0.0, 1.0,
+    0.0, 1.0, 1.0, 0.0
 ];
 
 pub const HOP_BITMASKS: [BitStruct; SIZE / 2] = {

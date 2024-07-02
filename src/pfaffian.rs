@@ -1,13 +1,9 @@
-use crate::{BitOps, FockState};
+use crate::{BitOps, FockState, Spin};
 use blas::{daxpy, ddot, dgemv, dger, dgemm};
 use lapack::{dgetrf, dgetri};
+use log::{error, trace};
 use pfapack::skpfa;
 use std::fmt;
-
-pub enum Spin {
-    Up,
-    Down,
-}
 
 /// Represents the Pfaffian state $\lvert\phi_{\text{PF}}\rangle$.
 /// #TODOC
@@ -18,6 +14,7 @@ pub enum Spin {
 /// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
 /// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
 /// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
+#[derive(Debug)]
 pub struct PfaffianState {
     pub n_elec: usize,
     pub n_sites: usize,
@@ -85,7 +82,7 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     // This will panic if the matrix is singular
     // Refer to LAPACK error message.
     if !(info1 == 0) || !(info2 == 0) {
-        println!(
+        error!(
             "The algorithm failed to invert the matrix. DGETRF: info={}, DGETRI: info={}",
             info1, info2
         );
@@ -190,6 +187,8 @@ where
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
+    trace!("Computed log abs pfaffian {} for state {}", <f64>::ln(<f64>::abs(pfaffian_value)), state);
+    trace!("Computed pfaffian {} for state {}", pfaffian_value, state);
 
     PfaffianState {
         n_elec: n,
@@ -267,6 +266,8 @@ pub fn get_pfaffian_ratio(
     }
 
     // Get the column to replace.
+    trace!("Making hopping ({}, {}, {:?})", previous_i, new_i, spin);
+    trace!("Index: up {:?}, down {:?}", indx_up, indx_down);
     let col = match spin {
         Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
         Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
@@ -286,6 +287,14 @@ pub fn get_pfaffian_ratio(
     (pfaff_up, new_b, col)
 }
 
+fn replace_element(vec: &mut Vec<usize>, i: usize, j: usize) {
+    for elem in vec.iter_mut() {
+        if *elem == i {
+            *elem = j;
+        }
+    }
+}
+
 /// Updates the pfaffian state given a computed ratio from the vector b.
 /// # Fields
 /// * __`pstate`__ - The pfaffian state to update. It will update inplace the
@@ -294,8 +303,17 @@ pub fn get_pfaffian_ratio(
 /// be acquired from the function [[get_pfaffian_ratio]].
 /// * __`col`__ - The column and row in the matrix $A$ that changed. This is NOT
 /// correlated to the index of the electron.
-pub fn update_pstate(pstate: &mut PfaffianState, bm: Vec<f64>, col: usize) {
+pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: Vec<f64>, col: usize) {
     // Rename and copy when necessary.
+    trace!("Updating the inverse matrix.");
+    match hop.2 {
+        Spin::Up => {
+            replace_element(&mut pstate.indices.0, hop.0, hop.1);
+        },
+        Spin::Down => {
+            replace_element(&mut pstate.indices.1, hop.0, hop.1);
+        }
+    };
     let n = pstate.n_elec as i32;
     let mut new_inv = pstate.inv_matrix.clone();
 
@@ -467,7 +485,7 @@ mod tests {
         // Size of the system
         let mut params = vec![0.0; 4 * SIZE * SIZE];
 
-        for test_iter in 0..1000 {
+        for test_iter in 0..10000 {
             println!("test_iter: {}", test_iter);
             // Generate the variationnal parameters
             // params[i+8*j] = f_ij
@@ -489,6 +507,7 @@ mod tests {
             println!("------------- Initial State ----------------");
             let mut pfstate = construct_matrix_a_from_state(&params, state);
             println!("Inverse Matrix: {}", pfstate);
+            let s: Spin;
 
             // Generate random update
             // Spin up or down?
@@ -498,10 +517,12 @@ mod tests {
             let (sups, sdowns) = convert_spin_to_array(state, n as usize);
             let initial_index =
                 if is_spin_up {
+                    s = Spin::Up;
                     if sups.len() == 0 { continue;}
                     sups[rng.gen::<usize>() % sups.len()]
                 }
                 else {
+                    s = Spin::Down;
                     if sdowns.len() == 0 { continue;}
                     sdowns[rng.gen::<usize>() % sdowns.len()]
                 };
@@ -541,6 +562,7 @@ mod tests {
                 spin_down: sdown,
                 n_sites: SIZE,
             };
+            let hop: (usize, usize, Spin) = (initial_index, final_index, s);
 
             println!("------------- Updated State Long way ----------------");
             let mut pfstate2 = construct_matrix_a_from_state(&params, state2);
@@ -563,7 +585,7 @@ mod tests {
             println!("Computed Pfaffian matches updated pfaffian.");
 
             println!("------------- Updated Inverse matrix ------------");
-            update_pstate(&mut pfstate, tmp.1, tmp.2);
+            update_pstate(&mut pfstate, hop, tmp.1, tmp.2);
             println!("{}", pfstate);
             invert_matrix(&mut pfstate.inv_matrix, pfstate.n_elec as i32);
             invert_matrix(&mut pfstate2.inv_matrix, pfstate2.n_elec as i32);
@@ -753,6 +775,7 @@ mod tests {
             spin_down: 5u8,
             n_sites: SIZE,
         };
+        let hop: (usize, usize, Spin) = (6, 5, Spin::Down);
         println!("------------- Updated State Long way ----------------");
         let pfstate2 = construct_matrix_a_from_state(&params, state2);
         println!("Inverse Matrix: {}", pfstate2);
@@ -762,7 +785,7 @@ mod tests {
         println!("B col: {:?}", tmp.1);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
         println!("Computed Pfaffian matches updated pfaffian.");
-        update_pstate(&mut pfstate, tmp.1, tmp.2);
+        update_pstate(&mut pfstate, hop, tmp.1, tmp.2);
         println!("------------- Updated Inverse matrix ------------");
         println!("{}", pfstate);
         for (good, test) in pfstate2.inv_matrix.iter().zip(pfstate.inv_matrix) {

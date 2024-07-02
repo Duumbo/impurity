@@ -5,6 +5,12 @@ use rand::Rng;
 use rand::distributions::{Distribution, Standard};
 use std::fmt;
 
+#[derive(Copy, Clone, Debug)]
+pub enum Spin {
+    Up,
+    Down,
+}
+
 /// Abstraction layer for common bitwise operations.
 /// # Purpose
 /// The Bitops trait brings in scope an abstraction layer over some common bitwise
@@ -363,16 +369,15 @@ impl<T: std::ops::Shr<usize, Output = T>> std::ops::Shr<usize> for FockState<T> 
 
 impl<T: BitOps> fmt::Display for FockState<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n")?;
-        write!(f, "n_up:   ")?;
+        write!(f, "|")?;
         for i in 0..self.n_sites {
-            write!(f, "{} ", self.spin_up.check(i) as usize)?;
+            write!(f, "{}", self.spin_up.check(i) as usize)?;
         }
-        write!(f, ";\nn_down: ")?;
+        write!(f, ":")?;
         for i in 0..self.n_sites {
-            write!(f, "{} ", self.spin_down.check(i) as usize)?;
+            write!(f, "{}", self.spin_down.check(i) as usize)?;
         }
-        write!(f, "")
+        write!(f, ">")
     }
 }
 
@@ -384,16 +389,16 @@ fn rot_right<T: BitOps>(s: T, n: usize, size: usize) -> T {
 }
 
 pub trait Hopper {
-    fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, usize)>;
+    fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, Spin)>;
 }
 
 impl<T: BitOps + From<u8>> Hopper for FockState<T> {
-    fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, usize)> {
+    fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, Spin)> {
         // This is the linear periodic version of the function
         let sup = self.spin_up;
         let sdo = self.spin_down;
         let nelec = (sup.count_ones() + sdo.count_ones()) as usize;
-        let mut out_hoppings: Vec<(usize, usize, usize)> = Vec::with_capacity(4 * nelec);
+        let mut out_hoppings: Vec<(usize, usize, Spin)> = Vec::with_capacity(4 * nelec);
 
         for j in 1..SIZE/2 + 1 {
             // See note 2024-06-08, rotate right gives all the horizontal links.
@@ -413,7 +418,7 @@ impl<T: BitOps + From<u8>> Hopper for FockState<T> {
                     (( i + self.n_sites - j ) % self.n_sites, i)
                 };
                 out_hoppings.push(
-                    (came_from, went_to, 1)
+                    (came_from, went_to, Spin::Up)
                 );
                 i = possible_hoppings_up.leading_zeros() as usize;
             }
@@ -429,7 +434,7 @@ impl<T: BitOps + From<u8>> Hopper for FockState<T> {
                     (( i + self.n_sites - j ) % self.n_sites, i)
                 };
                 out_hoppings.push(
-                    (came_from, went_to, 0)
+                    (came_from, went_to, Spin::Down)
                 );
                 i = possible_hoppings_do.leading_zeros() as usize;
             }
@@ -454,7 +459,7 @@ impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribu
 
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
-    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32) -> Self;
+    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> Self;
 }
 
 impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
@@ -481,7 +486,7 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
     }
 
 
-    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32) -> FockState<T> {
+    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> FockState<T> {
         // This is cheap, don't sweat it
         let all_hops = self.generate_all_hoppings();
 
@@ -491,13 +496,19 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
         let mut sup = self.spin_up;
         let mut sdown = self.spin_down;
 
-        if hop.2 == 1 {
-            sup.set(hop.0);
-            sup.set(hop.1);
-        } else {
-            sdown.set(hop.0);
-            sdown.set(hop.1);
+        match hop.2 {
+            Spin::Up => {
+                sup.set(hop.0);
+                sup.set(hop.1);
+            },
+            Spin::Down => {
+                sdown.set(hop.0);
+                sdown.set(hop.1);
+            }
         }
+        out_idx.0 = hop.0;
+        out_idx.1 = hop.1;
+        out_idx.2 = hop.2;
 
         FockState{
             n_sites: max_size as usize,

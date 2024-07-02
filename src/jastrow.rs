@@ -1,3 +1,4 @@
+use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
@@ -54,6 +55,7 @@ where
         }
         i = regular_nor.leading_zeros() as usize;
     }
+    trace!("Jastrow computed {} at state : {}", jastrow_out, fock_state);
     jastrow_out
 }
 

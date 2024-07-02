@@ -1,18 +1,21 @@
 use rand::Rng;
 use std::ptr::addr_of;
-use log::{debug, info};
+use log::{debug, info, trace};
 
-use impurity::{FockState, RandomStateGeneration, VarParams};
-use impurity::{FIJ, GI, VIJ, SIZE};
+use impurity::{FockState, RandomStateGeneration, VarParams, Spin};
+use impurity::{FIJ, GI, VIJ, SIZE, CONS_U, CONS_T};
 use impurity::density::compute_internal_product;
-use impurity::hamiltonian::{potential, kinetic};
+use impurity::hamiltonian::potential;
 
 const NELEC: usize = 4;
-const NMCSAMP: usize = 100_000;
-const NMCWARMUP: usize = 1000;
+const NMCSAMP: usize = 10_000;
+const NMCWARMUP: usize = 100;
 
 fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: &VarParams) -> (f64, FockState<u8>) {
-    let state2 = state.generate_hopping(rng, SIZE as u32);
+    let n0: usize = 0;
+    let n1: usize = 0;
+    let n2: Spin = Spin::Up;
+    let state2 = state.generate_hopping(rng, SIZE as u32, &mut (n0, n1, n2));
     let ip2 = compute_internal_product(state2, params);
     (ip2, state2)
 }
@@ -33,17 +36,56 @@ fn propose_hopping<R: Rng + ?Sized>(state: &FockState<u8>, rng: &mut R, params: 
 //    VarParams{fij, vij, gi}
 //}
 
-fn compute_hamiltonian(state: FockState<u8>, ip: f64, params: &VarParams) -> f64 {
-    let kin = kinetic(state, params);
-    let e = (kin / <f64>::exp(ip)) + potential(state);
-    debug!("Inside compute hamiltonian State: {}", state);
-    debug!("Inside compute hamiltonian Energy: {}", e);
+fn compute_hamiltonian(state: FockState<u8>, _ip: f64, _params: &VarParams) -> f64 {
+    //let kin = kinetic(state, params);
+    //let e = (kin / <f64>::exp(ip)) + potential(state);
+    let e = potential(state);
+    trace!("Inside compute hamiltonian Energy: {} for state: {}", e, state);
     e
+}
+
+fn log_system_parameters() {
+    info!("System parameter SIZE = {}", SIZE);
+    info!("System parameter NELEC = {}", NELEC);
+    info!("System parameter NMCSAMP = {}", NMCSAMP);
+    info!("System parameter NMCWARMUP = {}", NMCWARMUP);
+    info!("System parameter CONS_U = {}", CONS_U);
+    info!("System parameter CONS_T = {}", CONS_T);
+    for i in 0..4*SIZE*SIZE {
+        unsafe {
+            if FIJ[i] == 0.0 {continue;}
+            if i < SIZE*SIZE {
+                debug!("F_[{},{}]^[up, up]={}", i/SIZE, i%SIZE, FIJ[i]);
+            }
+            else if i < 2*SIZE*SIZE {
+                debug!("F_[{},{}]^[up, down]={}", i/SIZE - SIZE, i%SIZE, FIJ[i]);
+            }
+            else if i < 3*SIZE*SIZE {
+                debug!("F_[{},{}]^[down, up]={}", i/SIZE - 2*SIZE, i%SIZE, FIJ[i]);
+            }
+            else {
+                debug!("F_[{},{}]^[down, down]={}", i/SIZE - 3*SIZE, i%SIZE, FIJ[i]);
+            }
+        }
+    }
+    for i in 0..SIZE*SIZE {
+        unsafe {
+            if VIJ[i] == 0.0 {continue;}
+            debug!("V_[{},{}]={}", i/SIZE, i%SIZE, VIJ[i]);
+        }
+    }
+    for i in 0..SIZE {
+        unsafe {
+            if GI[i] == 0.0 {continue;}
+            debug!("G_[{}]={}", i, GI[i]);
+        }
+    }
 }
 
 fn main() {
     // Initialize logger
     env_logger::init();
+    log_system_parameters();
 
     let mut rng = rand::thread_rng();
     //let parameters = generate_random_params(&mut rng);
@@ -72,14 +114,14 @@ fn main() {
     // Warmup
     for _ in 0..NMCWARMUP {
         let (lip2, state2) = propose_hopping(&state, &mut rng, &parameters);
-        debug!("Current state: {}", state);
-        debug!("Proposed state: {}", state2);
+        trace!("Current state: {}", state);
+        trace!("Proposed state: {}", state2);
         let ratio = <f64>::exp(lip2 - lip);
-        debug!("Ratio: {}", ratio);
+        trace!("Ratio: {}", ratio);
         let w = rng.gen::<f64>();
         if ratio >= w {
             // We ACCEPT
-            debug!("Accept.");
+            trace!("Accept.");
             state = state2;
             lip = lip2;
         }
@@ -89,14 +131,14 @@ fn main() {
     // MC Sampling
     for _ in 0..NMCSAMP {
         let (lip2, state2) = propose_hopping(&state, &mut rng, &parameters);
-        debug!("Current state: {}", state);
-        debug!("Proposed state: {}", state2);
+        trace!("Current state: {}", state);
+        trace!("Proposed state: {}", state2);
         let ratio = <f64>::exp(lip2 - lip);
-        debug!("Ratio: {}", ratio);
+        trace!("Ratio: {}", ratio);
         let w = rng.gen::<f64>();
         if ratio >= w {
             // We ACCEPT
-            debug!("Accept.");
+            trace!("Accept.");
             state = state2;
             lip = lip2;
         }

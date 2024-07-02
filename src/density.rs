@@ -1,12 +1,13 @@
+use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::{pyfunction, PyResult};
 
 use std::slice::from_raw_parts as slice;
 
-use crate::jastrow::compute_jastrow_exp;
-use crate::gutzwiller::compute_gutzwiller_exp;
-use crate::pfaffian::construct_matrix_a_from_state;
-use crate::{FockState, VarParams, BitOps};
+use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
+use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
+use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
+use crate::{FockState, VarParams, BitOps, Spin};
 use crate::{NFIJ, NVIJ, NGI};
 
 pub fn compute_internal_product<T>(
@@ -25,7 +26,70 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
     let pfaffian = pfaffian_state.pfaff;
     pfaffian_state.rebuild_matrix();
     let scalar_prod = <f64>::abs(<f64>::exp(jastrow_exp + gutz_exp) * pfaffian);
+    trace!("Projector value: {}, for state: {}", jastrow_exp + gutz_exp, state);
+    trace!("Computed <x|psi>: {}, for state: {}", scalar_prod, state);
     <f64>::ln(scalar_prod) * 2.0
+}
+
+pub fn compute_internal_product_parts<T>(
+    state: FockState<T>,
+    params: &VarParams
+) -> (PfaffianState, f64)
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
+{
+    let (mut pfaffian_state, jastrow_exp, gutz_exp) = unsafe {
+        (
+            construct_matrix_a_from_state(slice(params.fij, NFIJ), state),
+            compute_jastrow_exp(state, slice(params.vij, NVIJ), state.n_sites),
+            compute_gutzwiller_exp(state, slice(params.gi, NGI), state.n_sites)
+        )
+    };
+    pfaffian_state.rebuild_matrix();
+    (pfaffian_state, jastrow_exp + gutz_exp)
+}
+
+pub fn fast_internal_product<T>(
+    previous_state: &FockState<T>,
+    new_state: &FockState<T>,
+    previous_pstate: &PfaffianState,
+    hopping: &(usize, usize, Spin),
+    previous_proj: &mut f64,
+    params: &VarParams
+) -> (f64, Vec<f64>, usize)
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
+{
+    // Rename things.
+    let previous_i = hopping.0;
+    let new_i = hopping.1;
+    let spin = hopping.2;
+    let n_sites = new_state.n_sites;
+
+    // Take a copy of the projectors
+    let proj_cp = *previous_proj;
+
+    let (pfaffian_ratio, b_vec, col) = unsafe {
+        let fij = slice(params.fij, NFIJ);
+        let vij = slice(params.vij, NVIJ);
+        let gi = slice(params.gi, NGI);
+        fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
+        match spin {
+            Spin::Up => {
+        fast_update_gutzwiller(previous_proj, gi, &previous_state.spin_down, previous_i, new_i);
+            },
+            Spin::Down => {
+        fast_update_gutzwiller(previous_proj, gi, &previous_state.spin_up, previous_i, new_i);
+            }
+
+        }
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+    };
+
+    // Combine to get the internal product.
+    trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
+    trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
+    let true_ratio = pfaffian_ratio * <f64>::exp(*previous_proj - proj_cp);
+    trace!("Fast Computed <x'|psi>/<x|psi>: {}, |x'> = {}, |x> = {}", true_ratio, new_state, previous_state);
+    (true_ratio, b_vec, col)
 }
 
 #[cfg(feature = "python-interface")]

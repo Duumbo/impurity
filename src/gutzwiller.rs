@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
@@ -45,6 +46,7 @@ where
         gutzwiller_sites.set(i);
         i = gutzwiller_sites.leading_zeros() as usize;
     }
+    trace!("Gutzwiller computed evaluated at {} for state: {}", gutz_out, fock_state);
     gutz_out
 }
 
