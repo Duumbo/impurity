@@ -1,8 +1,8 @@
-use log::trace;
+use log::{debug, trace};
 
-use crate::density::{compute_internal_product_parts, fast_internal_product};
+use crate::density::fast_internal_product;
 use crate::pfaffian::PfaffianState;
-use crate::{BitOps, FockState, CONS_U, Hopper, HOPPINGS, SIZE};
+use crate::{BitOps, FockState, SpinState, CONS_U, Hopper, HOPPINGS, SIZE};
 use crate::{VarParams, CONS_T, Spin};
 
 /// Computes the potential term of the Hamiltonian.
@@ -40,7 +40,7 @@ where
 /// $$
 pub fn kinetic<T>(state: FockState<T>, previous_pstate: &PfaffianState, previous_proj: f64, params: &VarParams) -> f64
 where
-    T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display
+    T: BitOps + From<SpinState> + std::fmt::Debug + std::fmt::Display
 {
     let hops = state.generate_all_hoppings();
 

@@ -7,7 +7,7 @@ use std::slice::from_raw_parts as slice;
 use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
 use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
 use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
-use crate::{FockState, VarParams, BitOps, Spin};
+use crate::{FockState, VarParams, BitOps, Spin, SpinState};
 use crate::{NFIJ, NVIJ, NGI};
 
 pub fn compute_internal_product<T>(
@@ -56,7 +56,7 @@ pub fn fast_internal_product<T>(
     previous_proj: &mut f64,
     params: &VarParams
 ) -> (f64, Vec<f64>, usize)
-where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
     // Rename things.
     let previous_i = hopping.0;

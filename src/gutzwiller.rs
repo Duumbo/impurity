@@ -371,11 +371,9 @@ mod test {
             }
             let e_up = SpinState {
                 state: e_up,
-                n_elec: SIZE,
             };
             let e_down = SpinState {
                 state: e_down,
-                n_elec: SIZE,
             };
 
             // Get the index that are the same.

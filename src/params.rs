@@ -73,27 +73,29 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0
 ];
 
-pub const HOP_BITMASKS: [BitStruct; SIZE / 2] = {
-    let mut hop_tmp: [BitStruct; SIZE / 2] = [BitStruct::from_be(0); SIZE / 2];
+pub const HOP_BITMASKS: [SpinState; SIZE / 2] = {
+    const WORD_SIZE: usize = 8;
+    let all_zeros = SpinState{state: [0x00; ARRAY_SIZE]};
+    let mut hop_tmp: [SpinState; SIZE / 2] = [all_zeros; SIZE / 2];
     // Index for array
     let mut i: usize = 0;
     while i < SIZE / 2 {
         hop_tmp[i] = {
-            let mut mask = BitStruct::from_be(0);
-            let one = BitStruct::from_be(1);
+            let mut mask = all_zeros;
+            let one: u8 = 1;
             let mut j: usize = 0;
             while j < (SIZE - 1 - i) {
                 if HOPPINGS[j + i + 1 + SIZE * j] != 0.0 {
                     if i == 0 {
-                        mask ^= one << (NBITS - j - 2);
+                        mask.state[(j + 2) / WORD_SIZE] ^= one << (WORD_SIZE - (j + 2) % WORD_SIZE);
                     } else {
-                        mask ^= one << (NBITS - j - 1);
+                        mask.state[(j + 1) / WORD_SIZE] ^= one << (WORD_SIZE - (j + 1) % WORD_SIZE);
                     }
                 }
                 j += 1;
             }
             if i == 0 && HOPPINGS[SIZE - 1] != 0.0 {
-                mask ^= one << (NBITS - 1);
+                mask.state[0] ^= one << (WORD_SIZE - 1);
             }
             // Index for  HOPPINGS
             mask

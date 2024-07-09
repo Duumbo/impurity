@@ -336,6 +336,7 @@ pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: 
     }
     // We already got the pfaffian ratio
     let pfaff_ratio = 1.0 / y[col];
+    trace!("Computed pfaffian ratio: {}", pfaff_ratio);
 
     unsafe {
         // B^-1 = B^-1 - 1./(X[alpha])) * X*Y^T where Y is the m column of A_inv
@@ -378,6 +379,93 @@ pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: 
         daxpy(
             n,
             -pfaff_ratio,
+            &pstate.inv_matrix[n as usize * col..(n + 1) as usize * col],
+            1,
+            &mut new_inv[n as usize * col..(n + 1) as usize * col],
+            1,
+        );
+    }
+    pstate.inv_matrix = new_inv;
+}
+
+// Tahara2008 B.15
+pub fn update_pstate_b15(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: Vec<f64>, col: usize) {
+    // Rename and copy when necessary.
+    trace!("Updating the inverse matrix.");
+    match hop.2 {
+        Spin::Up => {
+            replace_element(&mut pstate.indices.0, hop.0, hop.1);
+        },
+        Spin::Down => {
+            replace_element(&mut pstate.indices.1, hop.0, hop.1);
+        }
+    };
+    let n = pstate.n_elec as i32;
+    let mut new_inv = pstate.inv_matrix.clone();
+
+    // Compute A^-1 * b_m
+    let mut y = vec![0.0; n as usize];
+    unsafe {
+        dgemv(
+            b"n"[0],
+            n,
+            n,
+            1.0,
+            &pstate.inv_matrix,
+            n,
+            &bm,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
+    }
+    let inv_pfaff_ratio = y[col];
+    for elem in pstate.inv_matrix.iter_mut() {
+        *elem = inv_pfaff_ratio * *elem;
+    }
+
+    unsafe {
+        // B^-1 = B^-1 - 1./(X[alpha])) * X*Y^T where Y is the m column of A_inv
+        dger(
+            n,
+            n,
+            -1.0,
+            &y,
+            1,
+            &pstate.inv_matrix[col..col + n as usize * col],
+            n,
+            &mut new_inv,
+            n,
+        );
+
+        // B^-1 = B^-1 + 1./(X[alpha])) * Y*X^T
+        dger(
+            n,
+            n,
+            1.0,
+            &pstate.inv_matrix[col..col + n as usize * col],
+            n,
+            &y,
+            1,
+            &mut new_inv,
+            n,
+        );
+
+        // adding column alpha of A_inv to B_inv
+        daxpy(
+            n,
+            -1.0,
+            &pstate.inv_matrix[col..n as usize * (col + 1)],
+            n,
+            &mut new_inv[col..n as usize * (col + 1)],
+            n,
+        );
+
+        // adding row alpha of A_inv to B_inv
+        daxpy(
+            n,
+            -1.0,
             &pstate.inv_matrix[n as usize * col..(n + 1) as usize * col],
             1,
             &mut new_inv[n as usize * col..(n + 1) as usize * col],

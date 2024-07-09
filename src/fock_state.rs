@@ -4,6 +4,7 @@ use num::PrimInt;
 use rand::Rng;
 use rand::distributions::{Distribution, Standard};
 use std::fmt;
+use log::error;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Spin {
@@ -26,7 +27,8 @@ pub trait BitOps:
     std::cmp::PartialEq +
     std::ops::Shr<usize, Output = Self> +
     std::ops::Shl<usize, Output = Self> +
-    std::ops::BitOr<Output = Self>
+    std::ops::BitOr<Output = Self> +
+    From<SpinState>
 {
     /// Provides the number of leading zeros in the bitstring. This gives the
     /// position of the first set bit in the string. This method is consistent
@@ -58,7 +60,7 @@ pub trait BitOps:
 /// built-in  methods. [BitOps::set] and [BitOps::check] are implemented by
 /// shifting a bitmask.
 impl<I> BitOps for I
-    where I: PrimInt + std::ops::BitXorAssign + std::ops::BitAndAssign + From<u8>
+    where I: PrimInt + std::ops::BitXorAssign + std::ops::BitAndAssign + From<SpinState> + From<u8>
 {
     #[inline(always)]
     fn leading_zeros(self) -> u32 {
@@ -105,6 +107,49 @@ impl<I> BitOps for I
     }
 }
 
+impl From<SpinState> for u8 {
+    fn from(other: SpinState) -> Self {
+        if ARRAY_SIZE > 1 {error!("Casting SpinState of size {} to <u8> discards overflowing bits.", SIZE)}
+        other.state[0]
+    }
+}
+
+impl From<SpinState> for u32 {
+    fn from(other: SpinState) -> Self {
+        const NBYTES: usize = 4;
+        if ARRAY_SIZE > NBYTES {error!("Casting SpinState of size {} to <u32> discards overflowing bits.", SIZE)}
+        let mut tmp: [u8; NBYTES] = [0x00; NBYTES];
+        for i in 0..ARRAY_SIZE {
+            tmp[i] = other.state[i];
+        }
+        <u32>::from_ne_bytes(tmp)
+    }
+}
+
+impl From<SpinState> for u64 {
+    fn from(other: SpinState) -> Self {
+        const NBYTES: usize = 8;
+        if ARRAY_SIZE > NBYTES {error!("Casting SpinState of size {} to <u64> discards overflowing bits.", SIZE)}
+        let mut tmp: [u8; NBYTES] = [0x00; NBYTES];
+        for i in 0..ARRAY_SIZE {
+            tmp[i] = other.state[i];
+        }
+        <u64>::from_ne_bytes(tmp)
+    }
+}
+
+impl From<SpinState> for u128 {
+    fn from(other: SpinState) -> Self {
+        const NBYTES: usize = 16;
+        if ARRAY_SIZE > NBYTES {error!("Casting SpinState of size {} to <u128> discards overflowing bits.", SIZE)}
+        let mut tmp: [u8; NBYTES] = [0x00; NBYTES];
+        for i in 0..ARRAY_SIZE {
+            tmp[i] = other.state[i];
+        }
+        <u128>::from_ne_bytes(tmp)
+    }
+}
+
 /// Encoding of the positions of a given spin.
 /// # Definition
 /// This structure fixes the number of electrons. The convention is to index
@@ -115,8 +160,7 @@ impl<I> BitOps for I
 /// TODOC
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SpinState {
-    pub state: [u8; (SIZE + 7) / 8],
-    pub n_elec: usize,
+    pub state: [u8; (SIZE + 7) / 8]
 }
 
 /// Bitwise implementations for the byte array structure [SpinState].
@@ -169,12 +213,12 @@ impl BitOps for SpinState {
 
     fn ones() -> Self {
         let tmp = [0xff; ARRAY_SIZE];
-        SpinState{state: tmp, n_elec: ARRAY_SIZE*8}
+        SpinState{state: tmp}
     }
 
     fn zeros() -> Self {
         let tmp = [0x00; ARRAY_SIZE];
-        SpinState{state: tmp, n_elec: ARRAY_SIZE*8}
+        SpinState{state: tmp}
     }
 }
 
@@ -182,8 +226,7 @@ impl Distribution<SpinState> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SpinState {
         let mut state = [0; ARRAY_SIZE];
         rng.fill(&mut state);
-        let mut state = SpinState{state, n_elec: 0};
-        state.n_elec = state.count_ones() as usize;
+        let state = SpinState{state};
         state
     }
 }
@@ -192,7 +235,7 @@ impl From<u8> for SpinState {
     fn from(s: u8) -> SpinState {
         let mut tmp = [0; ARRAY_SIZE];
         tmp[0] = s;
-        SpinState{state: tmp, n_elec: s.count_ones() as usize}
+        SpinState{state: tmp}
     }
 }
 
@@ -213,7 +256,7 @@ impl std::ops::BitXor<SpinState> for SpinState {
         for i in 0..ARRAY_SIZE {
             tmp[i] = self.state[i] ^ other.state[i];
         }
-        Self {state: tmp, n_elec: self.n_elec}
+        Self {state: tmp}
     }
 }
 
@@ -225,7 +268,7 @@ impl std::ops::BitAnd<SpinState> for SpinState {
         for i in 0..ARRAY_SIZE {
             tmp[i] = self.state[i] & other.state[i];
         }
-        Self {state: tmp, n_elec: self.n_elec}
+        Self {state: tmp}
     }
 
 }
@@ -238,7 +281,7 @@ impl std::ops::BitOr<SpinState> for SpinState {
         for i in 0..ARRAY_SIZE {
             tmp[i] = self.state[i] | other.state[i];
         }
-        Self {state: tmp, n_elec: self.n_elec}
+        Self {state: tmp}
     }
 
 }
@@ -251,7 +294,7 @@ impl std::ops::Not for SpinState {
         for i in 0..ARRAY_SIZE {
             tmp[i] = ! self.state[i];
         }
-        Self {state: tmp, n_elec: self.n_elec}
+        Self {state: tmp}
     }
 }
 
@@ -283,7 +326,7 @@ impl std::ops::Shr<usize> for SpinState {
         }
 
 
-        Self{ state: out_array, n_elec: self.n_elec}
+        Self{ state: out_array}
     }
 }
 
@@ -315,7 +358,7 @@ impl std::ops::Shl<usize> for SpinState {
             out_array[i] ^= tmp[(i + 1) % ARRAY_SIZE].to_ne_bytes()[0];
         }
 
-        Self{ state: out_array, n_elec: self.n_elec}
+        Self{ state: out_array}
     }
 }
 
@@ -336,14 +379,14 @@ impl std::ops::Shl<usize> for SpinState {
 /// assert_eq!(state_5_both << 2, state_20_both);
 /// ```
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct FockState<T>
+pub struct FockState<T> where T: From<SpinState>
 {
     pub spin_up: T,
     pub spin_down: T,
     pub n_sites: usize,
 }
 
-impl<T: std::ops::Shl<usize, Output = T>> std::ops::Shl<usize> for FockState<T> {
+impl<T: std::ops::Shl<usize, Output = T> + From<SpinState>> std::ops::Shl<usize> for FockState<T> {
     type Output = Self;
 
     fn shl(self, u: usize) -> Self::Output {
@@ -355,7 +398,7 @@ impl<T: std::ops::Shl<usize, Output = T>> std::ops::Shl<usize> for FockState<T> 
     }
 }
 
-impl<T: std::ops::Shr<usize, Output = T>> std::ops::Shr<usize> for FockState<T> {
+impl<T: std::ops::Shr<usize, Output = T> + From<SpinState>> std::ops::Shr<usize> for FockState<T> {
     type Output = Self;
 
     fn shr(self, u: usize) -> Self::Output {
@@ -392,7 +435,7 @@ pub trait Hopper {
     fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, Spin)>;
 }
 
-impl<T: BitOps + From<u8>> Hopper for FockState<T> {
+impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
     fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, Spin)> {
         // This is the linear periodic version of the function
         let sup = self.spin_up;
