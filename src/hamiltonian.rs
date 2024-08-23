@@ -1,9 +1,9 @@
-use log::{debug, trace};
+use log::trace;
 
-use crate::density::fast_internal_product;
+use crate::density::fast_internal_product_no_otilde;
 use crate::pfaffian::PfaffianState;
-use crate::{BitOps, FockState, SpinState, CONS_U, Hopper, HOPPINGS, SIZE};
-use crate::{VarParams, CONS_T, Spin};
+use crate::{BitOps, FockState, Hopper, SpinState};
+use crate::{VarParams, Spin, SysParams};
 
 /// Computes the potential term of the Hamiltonian.
 /// # Arguments
@@ -17,11 +17,11 @@ use crate::{VarParams, CONS_T, Spin};
 /// $$
 /// H_U=U\sum_i n_{i\uparrow}n_{i\downarrow}
 /// $$
-pub fn potential<T>(state: FockState<T>) -> f64
+pub fn potential<T>(state: FockState<T>, sys: &SysParams) -> f64
 where
     T: BitOps,
 {
-    let pot = ((state.spin_up & state.spin_down).count_ones() as f64) * CONS_U;
+    let pot = ((state.spin_up & state.spin_down).count_ones() as f64) * sys.cons_u;
     trace!("Output potential <x|U|psi> = {:.2} for state |x> = {}", pot, state);
     pot
 }
@@ -38,11 +38,11 @@ where
 /// $$
 /// H_T=-t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
 /// $$
-pub fn kinetic<T>(state: FockState<T>, previous_pstate: &PfaffianState, previous_proj: f64, params: &VarParams) -> f64
+pub fn kinetic<T>(state: FockState<T>, previous_pstate: &PfaffianState, previous_proj: f64, params: &VarParams, sys: &SysParams) -> f64
 where
     T: BitOps + From<SpinState> + std::fmt::Debug + std::fmt::Display
 {
-    let hops = state.generate_all_hoppings();
+    let hops = state.generate_all_hoppings(&sys.hopping_bitmask);
 
     let mut kin = 0.0;
     for hop in hops.into_iter() {
@@ -58,10 +58,10 @@ where
             }
         };
         let mut proj = previous_proj;
-        let (ratio, _col, _colidx) = fast_internal_product(&state, &f_state, previous_pstate, &hop, &mut proj, params);
+        let (ratio, _col, _colidx) = fast_internal_product_no_otilde(&state, &f_state, previous_pstate, &hop, &mut proj, params);
         trace!("Projection state: |x'> = {}, z = {}", f_state, ratio);
         trace!("Adding kinetic term t_[i,j]<x'|psi>: |x> = {}, |x'> = {}, hop = ({}, {}, {:?}) Computed <x'|psi>/<x|psi> = {}", state, f_state, hop.0, hop.1, hop.2, ratio);
-        kin += ratio*CONS_T*HOPPINGS[hop.0 + hop.1*SIZE];
+        kin += ratio*sys.cons_t*sys.transfert_matrix[hop.0 + hop.1*sys.size];
     }
 
     trace!("Output kinetic <x|K|psi> = {:.2} for state |x> = {}", kin, state);

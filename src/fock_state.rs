@@ -432,11 +432,11 @@ fn rot_right<T: BitOps>(s: T, n: usize, size: usize) -> T {
 }
 
 pub trait Hopper {
-    fn generate_all_hoppings(self: &Self) -> Vec<(usize, usize, Spin)>;
+    fn generate_all_hoppings(self: &Self, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)>;
 }
 
 impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
-    fn generate_all_hoppings(self: &FockState<T>) -> Vec<(usize, usize, Spin)> {
+    fn generate_all_hoppings(self: &FockState<T>, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)> {
         // This is the linear periodic version of the function
         let sup = self.spin_up;
         let sdo = self.spin_down;
@@ -446,7 +446,7 @@ impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
         for j in 1..SIZE/2 + 1 {
             // See note 2024-06-08, rotate right gives all the horizontal links.
             // We need to go to j up to SIZE / 2
-            let bitmask = <T>::from(HOP_BITMASKS[j - 1]);
+            let bitmask = <T>::from(bitmask[j - 1]);
             let mut possible_hoppings_up = (rot_right(sup, j, self.n_sites) ^ sup) & bitmask;
             let mut possible_hoppings_do = (rot_right(sdo, j, self.n_sites) ^ sdo) & bitmask;
 
@@ -502,7 +502,7 @@ impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribu
 
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
-    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> Self;
+    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> Self;
 }
 
 impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
@@ -529,9 +529,9 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
     }
 
 
-    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> FockState<T> {
+    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> FockState<T> {
         // This is cheap, don't sweat it
-        let all_hops = self.generate_all_hoppings();
+        let all_hops = self.generate_all_hoppings(&sys.hopping_bitmask);
 
         let rand_index = rng.gen_range(0..all_hops.len());
         let hop = all_hops[rand_index];

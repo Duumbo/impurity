@@ -2,25 +2,22 @@ use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::{pyfunction, PyResult};
 
-use std::slice::from_raw_parts as slice;
-
 use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
 use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
 use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
-use crate::{FockState, VarParams, BitOps, Spin, SpinState};
-use crate::{NFIJ, NVIJ, NGI};
+use crate::{BitOps, FockState, Spin, SpinState, VarParams};
 
 pub fn compute_internal_product<T>(
     state: FockState<T>,
-    params: &VarParams
+    params: &VarParams,
 ) -> f64
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
 {
-    let (mut pfaffian_state, jastrow_exp, gutz_exp) = unsafe {
+    let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
-            construct_matrix_a_from_state(slice(params.fij, NFIJ), state),
-            compute_jastrow_exp(state, slice(params.vij, NVIJ), state.n_sites),
-            compute_gutzwiller_exp(state, slice(params.gi, NGI), state.n_sites)
+            construct_matrix_a_from_state(params.fij, state),
+            compute_jastrow_exp(state, params.vij, state.n_sites),
+            compute_gutzwiller_exp(state, params.gi, state.n_sites)
         )
     };
     let pfaffian = pfaffian_state.pfaff;
@@ -33,28 +30,28 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
 
 pub fn compute_internal_product_parts<T>(
     state: FockState<T>,
-    params: &VarParams
+    params: &VarParams,
 ) -> (PfaffianState, f64)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
 {
-    let (mut pfaffian_state, jastrow_exp, gutz_exp) = unsafe {
+    let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
-            construct_matrix_a_from_state(slice(params.fij, NFIJ), state),
-            compute_jastrow_exp(state, slice(params.vij, NVIJ), state.n_sites),
-            compute_gutzwiller_exp(state, slice(params.gi, NGI), state.n_sites)
+            construct_matrix_a_from_state(params.fij, state),
+            compute_jastrow_exp(state, params.vij, state.n_sites),
+            compute_gutzwiller_exp(state, params.gi, state.n_sites)
         )
     };
     pfaffian_state.rebuild_matrix();
     (pfaffian_state, jastrow_exp + gutz_exp)
 }
 
-pub fn fast_internal_product<T>(
+pub fn fast_internal_product_no_otilde<T>(
     previous_state: &FockState<T>,
     new_state: &FockState<T>,
     previous_pstate: &PfaffianState,
     hopping: &(usize, usize, Spin),
     previous_proj: &mut f64,
-    params: &VarParams
+    params: &VarParams,
 ) -> (f64, Vec<f64>, usize)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
@@ -67,10 +64,54 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     // Take a copy of the projectors
     let proj_cp = *previous_proj;
 
-    let (pfaffian_ratio, b_vec, col) = unsafe {
-        let fij = slice(params.fij, NFIJ);
-        let vij = slice(params.vij, NVIJ);
-        let gi = slice(params.gi, NGI);
+    let (pfaffian_ratio, b_vec, col) = {
+        let fij = params.fij;
+        let vij = params.vij;
+        let gi = params.gi;
+        fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
+        match spin {
+            Spin::Up => {
+        fast_update_gutzwiller(previous_proj, gi, &previous_state.spin_down, previous_i, new_i);
+            },
+            Spin::Down => {
+        fast_update_gutzwiller(previous_proj, gi, &previous_state.spin_up, previous_i, new_i);
+            }
+
+        }
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+    };
+
+    // Combine to get the internal product.
+    trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
+    trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
+    let true_ratio = pfaffian_ratio * <f64>::exp(*previous_proj - proj_cp);
+    trace!("Fast Computed <x'|psi>/<x|psi>: {}, |x'> = {}, |x> = {}", true_ratio, new_state, previous_state);
+    (true_ratio, b_vec, col)
+}
+
+pub fn fast_internal_product<T>(
+    previous_state: &FockState<T>,
+    new_state: &FockState<T>,
+    previous_pstate: &PfaffianState,
+    hopping: &(usize, usize, Spin),
+    previous_proj: &mut f64,
+    params: &VarParams,
+) -> (f64, Vec<f64>, usize)
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
+{
+    // Rename things.
+    let previous_i = hopping.0;
+    let new_i = hopping.1;
+    let spin = hopping.2;
+    let n_sites = new_state.n_sites;
+
+    // Take a copy of the projectors
+    let proj_cp = *previous_proj;
+
+    let (pfaffian_ratio, b_vec, col) = {
+        let fij = params.fij;
+        let vij = params.vij;
+        let gi = params.gi;
         fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
         match spin {
             Spin::Up => {

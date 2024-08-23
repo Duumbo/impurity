@@ -2,7 +2,7 @@ use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use crate::{BitOps, FockState};
+use crate::{BitOps, DerivativeOperator, FockState};
 
 /// Computes the Jastrow exponent for a single fock state.
 /// # Arguments
@@ -57,6 +57,34 @@ where
     }
     trace!("Jastrow computed {} at state : {}", jastrow_out, fock_state);
     jastrow_out
+}
+
+pub fn compute_jastrow_der<T>(
+    fock_state: FockState<T>,
+    der: &mut DerivativeOperator,
+    n_sites: usize,
+)
+where
+    T: BitOps + std::fmt::Display,
+{
+    let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
+    regular_nor.mask_bits(n_sites);
+    let mut i: usize = regular_nor.leading_zeros() as usize;
+    let mut indices: Vec<usize> = Vec::with_capacity(n_sites);
+    while i < n_sites {
+        indices.push(i);
+        regular_nor.set(i);
+        for nk in 0..indices.len() - 1 {
+            let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
+            let k = indices[nk];
+            if n1.check(i) ^ n2.check(k) {
+                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * (der.mu + 1)) as usize] -= 0.5;
+            } else {
+                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * (der.mu + 1)) as usize] += 0.5;
+            }
+        }
+        i = regular_nor.leading_zeros() as usize;
+    }
 }
 
 

@@ -1,4 +1,4 @@
-use crate::{BitOps, FockState, Spin};
+use crate::{BitOps, DerivativeOperator, FockState, Spin, SysParams};
 use blas::{daxpy, ddot, dgemv, dger, dgemm};
 use lapack::{dgetrf, dgetri};
 use log::{error, trace};
@@ -187,6 +187,7 @@ where
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
+
     trace!("Computed log abs pfaffian {} for state {}", <f64>::ln(<f64>::abs(pfaffian_value)), state);
     trace!("Computed pfaffian {} for state {}", pfaffian_value, state);
 
@@ -196,6 +197,43 @@ where
         inv_matrix: a,
         indices: (indices, indices2),
         pfaff: pfaffian_value,
+    }
+}
+
+pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams)
+{
+    // Temporary bindings
+    let indices = &pstate.indices.0;
+    let indices2 = &pstate.indices.1;
+    let size = sys.size;
+    let a = &pstate.inv_matrix;
+    let n = pstate.n_elec;
+    let off = indices.len();
+
+    trace!("Packing derivatives from inverse matrix.");
+    for jj in 0..indices2.len() {
+        for ii in 0..indices.len() {
+            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices[ii] + size*size + (der.n * (der.mu + 1)) as usize] += a[ii * n + (jj + off)];
+            der.o_tilde[der.pfaff_off + indices[ii] + size * indices2[jj] + 2*size*size + (der.n * (der.mu + 1)) as usize] += a[(jj + off) * n + ii];
+        }
+    }
+    for jj in 0..indices.len() {
+        for ii in 0..indices.len() {
+            if indices[ii] == indices[jj] {
+                continue;
+            }
+            der.o_tilde[der.pfaff_off + indices[ii] + size * indices[jj] + (der.n * (der.mu + 1)) as usize] += a[ii + jj * n];
+            der.o_tilde[der.pfaff_off + indices[jj] + size * indices[ii] + (der.n * (der.mu + 1)) as usize] += a[jj + ii * n];
+        }
+    }
+    for jj in 0..indices2.len() {
+        for ii in 0..indices2.len() {
+            if indices2[ii] == indices2[jj] {
+                continue;
+            }
+            der.o_tilde[der.pfaff_off + indices2[ii] + size * indices2[jj] + 3*size*size + (der.n * (der.mu + 1)) as usize] += a[ii + off + (jj + off) * n];
+            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices2[ii] + 3*size*size + (der.n * (der.mu + 1)) as usize] += a[jj + off + (ii + off) * n];
+        }
     }
 }
 

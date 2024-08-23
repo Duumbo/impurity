@@ -12,7 +12,33 @@ pub mod parse;
 include!("fock_state.rs");
 
 // Include the params definition
-include!("params.rs");
+include!("constants.rs");
+include!("hoppings.rs");
+
+
+/// Collection of the variationnal parameters
+/// TODOC
+pub struct VarParams<'a> {
+    pub fij: &'a [f64],
+    pub vij: &'a [f64],
+    pub gi: &'a [f64],
+}
+
+/// The operator $O_k$
+/// TODOC
+pub struct DerivativeOperator<'a> {
+    pub o_tilde: &'a mut [f64],
+    pub expval_o: &'a mut [f64],
+    pub ho: &'a mut [f64],
+    /// Number of variationnal parameters
+    pub n: i32,
+    /// Number of monte-carlo sampling
+    pub mu: i32,
+    pub nsamp: f64,
+    pub visited: &'a mut [usize],
+    pub pfaff_off: usize,
+    pub jas_off: usize,
+}
 
 /// Module to calculate pfaffian
 /// # Usage
@@ -56,6 +82,8 @@ include!("params.rs");
 /// \end{pmatrix}
 /// $$
 pub mod pfaffian;
+
+pub mod monte_carlo;
 
 pub mod density;
 
@@ -122,6 +150,10 @@ pub mod gutzwiller;
 /// -t\sum_{<i,j>,\sigma}c^\dagger_{i\sigma}c_{j\sigma}+c^\dagger_{j\sigma}c_{i\sigma}
 /// $$
 pub mod hamiltonian;
+
+/// The optimisation of the ground state
+/// TODOC
+pub mod optimisation;
 
 #[cfg(feature = "python-interface")]
 #[pymodule]
