@@ -19,9 +19,9 @@ include!("hoppings.rs");
 /// Collection of the variationnal parameters
 /// TODOC
 pub struct VarParams<'a> {
-    pub fij: &'a [f64],
-    pub vij: &'a [f64],
-    pub gi: &'a [f64],
+    pub fij: &'a mut [f64],
+    pub vij: &'a mut [f64],
+    pub gi: &'a mut [f64],
 }
 
 /// The operator $O_k$
@@ -38,6 +38,7 @@ pub struct DerivativeOperator<'a> {
     pub visited: &'a mut [usize],
     pub pfaff_off: usize,
     pub jas_off: usize,
+    pub epsilon: f64,
 }
 
 /// Module to calculate pfaffian

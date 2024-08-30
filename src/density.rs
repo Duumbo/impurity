@@ -65,9 +65,9 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     let proj_cp = *previous_proj;
 
     let (pfaffian_ratio, b_vec, col) = {
-        let fij = params.fij;
-        let vij = params.vij;
-        let gi = params.gi;
+        let fij = &params.fij;
+        let vij = &params.vij;
+        let gi = &params.gi;
         fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
         match spin {
             Spin::Up => {
@@ -109,9 +109,9 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     let proj_cp = *previous_proj;
 
     let (pfaffian_ratio, b_vec, col) = {
-        let fij = params.fij;
-        let vij = params.vij;
-        let gi = params.gi;
+        let fij = &params.fij;
+        let vij = &params.vij;
+        let gi = &params.gi;
         fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
         match spin {
             Spin::Up => {

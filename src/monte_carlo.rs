@@ -68,12 +68,57 @@ fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display +
     compute_pfaffian_derivative(pstate, der, sys);
 }
 
+#[inline(always)]
+fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
+    n: &mut usize,
+    proj: &mut f64,
+    proj_copy: &mut f64,
+    proj_copy_persistent: &mut f64,
+    ratio: &f64,
+    state: &mut FockState<T>,
+    state2: &FockState<T>,
+    hop: &(usize, usize, Spin),
+    col: Vec<f64>,
+    colidx: usize,
+    pstate: &mut PfaffianState,
+    params: &VarParams,
+    der: &mut DerivativeOperator,
+    sys: &SysParams
+) {
+    // Clean update once in a while
+    // written in this way for branch prediction.
+    der.mu += 1;
+    if *n < sys.clean_update_frequency {
+        *state = *state2;
+        *proj = *proj_copy;
+        update_pstate(pstate, *hop, col, colidx);
+    } else {
+        let tmp_pfaff = pstate.pfaff;
+        (*pstate, *proj) = compute_internal_product_parts(*state2, params);
+        let inverse_proj = <f64>::exp(*proj_copy_persistent - *proj);
+        let err = <f64>::abs(tmp_pfaff * *ratio * inverse_proj) - <f64>::abs(pstate.pfaff);
+        if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
+            warn!("Updated matrix is probably singular, got pfaffian {:.2e} and Tolerence is : {:e}.", pstate.pfaff, sys.tolerance_singularity);
+        }
+        trace!("PfaffianState after clean update: {:?}", pstate);
+        if err >= sys.tolerance_sherman_morrison {
+            warn!("Sherman-Morrisson update error of {:.2e} on computed pfaffian. Tolerence is : {:e}. Ratio was {}", err, sys.tolerance_sherman_morrison, ratio);
+        }
+        *n = 0;
+        *state = *state2;
+        *proj_copy_persistent = *proj;
+    }
+}
+
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
 (rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> f64
 where Standard: Distribution<T>
 {
+    if derivatives.mu != -1 {
+        warn!("The derivative operator current row was mu = {} on entry, is it reinitialized?", derivatives.mu);
+    }
     let mut state = initial_state;
     let (mut pstate, mut proj) = compute_internal_product_parts(state, params);
     let mut hop: (usize, usize, Spin) = (0, 0, Spin::Up);
@@ -81,7 +126,6 @@ where Standard: Distribution<T>
     let mut n_accepted_updates: usize = 0;
     let mut energy: f64 = 0.0;
     let mut proj_copy_persistent = proj;
-    let mut sign: usize = 0;
 
     info!("Starting the warmup phase.");
     // Warmup
@@ -96,39 +140,31 @@ where Standard: Distribution<T>
             // We ACCEPT
             trace!("Accept.");
             n_accepted_updates += 1;
+            make_update(
+                &mut n_accepted_updates,
+                &mut proj,
+                &mut proj_copy,
+                &mut proj_copy_persistent,
+                &ratio,
+                &mut state,
+                &state2,
+                &hop,
+                col,
+                colidx,
+                &mut pstate,
+                params,
+                derivatives,
+                sys
+            );
 
-            // Clean update once in a while
-            if n_accepted_updates < sys.clean_update_frequency {
-                state = state2;
-                proj = proj_copy;
-                update_pstate(&mut pstate, hop, col, colidx);
-            } else {
-                let tmp_pfaff = pstate.pfaff;
-                trace!("PfaffianState before clean update: {:?}", pstate);
-                sign = (sign + get_sign(&state, &hop)) % 2;
-                trace!("Number of electrons between hopping: {}", get_sign(&state, &hop));
-                (pstate, proj) = compute_internal_product_parts(state2, params);
-                let inverse_proj = <f64>::exp(proj_copy_persistent - proj);
-                if sign != 0 {
-                    pstate.pfaff *= -1.0;
-                }
-                if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
-                    warn!("Updated matrix is probably singular, got pfaffian {:.2e} and Tolerence is : {:e}.", pstate.pfaff, sys.tolerance_singularity);
-                }
-                trace!("PfaffianState after clean update: {:?}", pstate);
-                let err = <f64>::abs(tmp_pfaff * ratio * inverse_proj) - <f64>::abs(pstate.pfaff);
-                if err >= sys.tolerance_sherman_morrison {
-                    warn!("Sherman-Morrisson update error of {:.2e} on computed pfaffian. Tolerence is : {:e}. Ratio was {}, states were: {} -> {}", err, sys.tolerance_sherman_morrison, ratio, state, state2);
-                }
-                n_accepted_updates = 0;
-                state = state2;
-                proj_copy_persistent = proj;
-            }
         }
     }
 
     info!("Starting the sampling phase.");
     // MC Sampling
+    // We need to reset the counter that the warmup increased.
+    derivatives.mu = -1;
+    // We need to get rid of the old data if it exists. MAYBE NOT THE JOB OF THIS FUNCTION
     for i in 0..derivatives.n as usize {
         derivatives.o_tilde[i] *= 0.0;
     }
@@ -145,35 +181,22 @@ where Standard: Distribution<T>
             // We ACCEPT
             trace!("Accept.");
             n_accepted_updates += 1;
-            // Clean update once in a while
-            // written in this way for branch prediction.
-            if n_accepted_updates < sys.clean_update_frequency {
-                derivatives.mu += 1;
-                state = state2;
-                proj = proj_copy;
-                update_pstate(&mut pstate, hop, col, colidx);
-            } else {
-                derivatives.mu += 1;
-                let tmp_pfaff = pstate.pfaff;
-                sign = (sign + get_sign(&state, &hop)) % 2;
-                trace!("Number of electrons between hopping: {}", get_sign(&state, &hop));
-                (pstate, proj) = compute_internal_product_parts(state2, params);
-                let inverse_proj = <f64>::exp(proj_copy_persistent - proj);
-                if sign != 0 {
-                    pstate.pfaff *= -1.0;
-                }
-                let err = <f64>::abs(tmp_pfaff * ratio * inverse_proj) - <f64>::abs(pstate.pfaff);
-                if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
-                    warn!("Updated matrix is probably singular, got pfaffian {:.2e} and Tolerence is : {:e}.", pstate.pfaff, sys.tolerance_singularity);
-                }
-                trace!("PfaffianState after clean update: {:?}", pstate);
-                if err >= sys.tolerance_sherman_morrison {
-                    warn!("Sherman-Morrisson update error of {:.2e} on computed pfaffian. Tolerence is : {:e}. Ratio was {}", err, sys.tolerance_sherman_morrison, ratio);
-                }
-                n_accepted_updates = 0;
-                state = state2;
-                proj_copy_persistent = proj;
-            }
+            make_update(
+                &mut n_accepted_updates,
+                &mut proj,
+                &mut proj_copy,
+                &mut proj_copy_persistent,
+                &ratio,
+                &mut state,
+                &state2,
+                &hop,
+                col,
+                colidx,
+                &mut pstate,
+                params,
+                derivatives,
+                sys
+            );
             // Compute the derivative operator
             compute_derivative_operator(state, &pstate, derivatives, params, sys);
         }

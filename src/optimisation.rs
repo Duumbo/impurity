@@ -32,6 +32,7 @@ fn compute_w(w: &mut [f64], a: &DerivativeOperator, p: &[f64]) {
     let beta = 0.0;
 
     // Temp work vector
+    println!("{}", a.mu);
     let mut work: Vec<f64> = vec![0.0; a.mu as usize];
     unsafe {
         trace!("x_[n] = {:?}", p);
@@ -84,6 +85,30 @@ fn update_p(r_k: &[f64], p_k: &mut [f64], beta: f64, dim: i32) {
     unsafe {
         dscal(dim, beta, p_k, incx);
         daxpy(dim, alpha, r_k, incx, p_k, incy);
+    }
+}
+
+/// Adds an offset to the diagonal of the overlap matrix S_[k,m].
+/// TODOC
+/// see tahara 2008 3.3.1
+/// $$
+/// \begin{align}
+/// \widetilde{S}_{k,m}&=\epsilon\delta_{k,m}+S_{k,m}\\
+/// &=\epsilon\delta_{k,\mu}\delta{\mu,m}+\widetilde{O}^*_{k,\mu}\widetilde{O}^T_{\mu,m}
+/// \end{align}
+/// $$
+pub fn spread_eigenvalues(a: &mut DerivativeOperator) {
+    let epsilon = a.epsilon;
+    let n_elem = {
+        if a.mu > a.n {a.n}
+        else {a.mu}
+    };
+    let work = vec![epsilon; n_elem as usize];
+    unsafe {
+        let alpha = 1.0;
+        let incx = 1;
+        let incy = a.n + 1;
+        daxpy(n_elem, alpha, &work, incx, &mut a.o_tilde, incy);
     }
 }
 
