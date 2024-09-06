@@ -32,7 +32,6 @@ fn compute_w(w: &mut [f64], a: &DerivativeOperator, p: &[f64]) {
     let beta = 0.0;
 
     // Temp work vector
-    println!("{}", a.mu);
     let mut work: Vec<f64> = vec![0.0; a.mu as usize];
     unsafe {
         trace!("x_[n] = {:?}", p);

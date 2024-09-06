@@ -62,9 +62,10 @@ where
     let mut gutzwiller_sites = fock_state.spin_up & fock_state.spin_down;
     gutzwiller_sites.mask_bits(n_sites);
     let mut i = gutzwiller_sites.leading_zeros() as usize;
+    trace!("hello, i = {}", i);
     while i < n_sites {
-        der.o_tilde[i * (der.mu + 1) as usize] = 1.0;
-        trace!("Computed gutzwiller derivative O_[{}, {}] = {}", i, der.mu+1, 1);
+        der.o_tilde[i * der.mu as usize] = 1.0;
+        trace!("Computed gutzwiller derivative O_[{}, {}] = {}", i, der.mu, 1);
         gutzwiller_sites.set(i);
         i = gutzwiller_sites.leading_zeros() as usize;
     }

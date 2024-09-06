@@ -60,7 +60,7 @@ where
         let mut proj = previous_proj;
         let (ratio, _col, _colidx) = fast_internal_product_no_otilde(&state, &f_state, previous_pstate, &hop, &mut proj, params);
         trace!("Projection state: |x'> = {}, z = {}", f_state, ratio);
-        trace!("Adding kinetic term t_[i,j]<x'|psi>: |x> = {}, |x'> = {}, hop = ({}, {}, {:?}) Computed <x'|psi>/<x|psi> = {}", state, f_state, hop.0, hop.1, hop.2, ratio);
+        trace!("Adding kinetic term t_[i,j]<x'|psi>: |x> = {}, |x'> = {}, hop = ({}, {}, {}) Computed <x'|psi>/<x|psi> = {}", state, f_state, hop.0, hop.1, hop.2, ratio);
         kin += ratio*sys.cons_t*sys.transfert_matrix[hop.0 + hop.1*sys.size];
     }
 

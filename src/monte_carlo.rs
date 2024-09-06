@@ -96,7 +96,7 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
         let tmp_pfaff = pstate.pfaff;
         (*pstate, *proj) = compute_internal_product_parts(*state2, params);
         let inverse_proj = <f64>::exp(*proj_copy_persistent - *proj);
-        let err = <f64>::abs(tmp_pfaff * *ratio * inverse_proj) - <f64>::abs(pstate.pfaff);
+        let err = <f64>::abs(<f64>::abs(tmp_pfaff * *ratio * inverse_proj) - <f64>::abs(pstate.pfaff));
         if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
             warn!("Updated matrix is probably singular, got pfaffian {:.2e} and Tolerence is : {:e}.", pstate.pfaff, sys.tolerance_singularity);
         }
@@ -163,11 +163,9 @@ where Standard: Distribution<T>
     info!("Starting the sampling phase.");
     // MC Sampling
     // We need to reset the counter that the warmup increased.
-    derivatives.mu = -1;
-    // We need to get rid of the old data if it exists. MAYBE NOT THE JOB OF THIS FUNCTION
-    for i in 0..derivatives.n as usize {
-        derivatives.o_tilde[i] *= 0.0;
-    }
+    derivatives.mu = 0;
+    // Compute the derivative for the first element in the markov chain
+    compute_derivative_operator(state, &pstate, derivatives, params, sys);
     for mc_it in 0..sys.nmcsample {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
@@ -200,7 +198,7 @@ where Standard: Distribution<T>
             // Compute the derivative operator
             compute_derivative_operator(state, &pstate, derivatives, params, sys);
         }
-        derivatives.visited[(derivatives.mu + 1) as usize] += 1;
+        derivatives.visited[derivatives.mu as usize] += 1;
         // Accumulate energy
         let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
         energy += state_energy;
@@ -211,7 +209,7 @@ where Standard: Distribution<T>
             daxpy(
                 derivatives.n,
                 state_energy,
-                &derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize .. (derivatives.n * (derivatives.mu + 2)) as usize],
+                &derivatives.o_tilde[(derivatives.n * derivatives.mu) as usize .. (derivatives.n * (derivatives.mu + 1)) as usize],
                 incx,
                 &mut derivatives.ho,
                 incy
@@ -219,10 +217,11 @@ where Standard: Distribution<T>
         }
         // Accumulate the derivative operators
         for i in 0 .. derivatives.n as usize {
-            derivatives.expval_o[i] += derivatives.o_tilde[i + (derivatives.n * (derivatives.mu + 1)) as usize];
+            derivatives.expval_o[i] += derivatives.o_tilde[i + (derivatives.n * derivatives.mu) as usize];
         }
 
     }
+    derivatives.mu += 1;
     info!("Final Energy: {:.2}", energy);
     energy = energy / sys.nmcsample as f64;
     info!("Final Energy normalized: {:.2}", energy);

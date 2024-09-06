@@ -24,6 +24,34 @@ pub struct VarParams<'a> {
     pub fij: &'a mut [f64],
     pub vij: &'a mut [f64],
     pub gi: &'a mut [f64],
+    pub size: usize,
+}
+
+impl<'a> std::fmt::Display for VarParams<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let width = 8;
+        for i in 0..4*self.size*self.size {
+            if i < self.size*self.size {
+                writeln!(f, "F_[{},{}]^[{UPARROW}, {UPARROW}]={:>width$.05e}", i/self.size, i%self.size, self.fij[i])?;
+            }
+            else if i < 2*self.size*self.size {
+                writeln!(f, "F_[{},{}]^[{UPARROW}, {DOWNARROW}]={:>width$.05e}", i/self.size - self.size, i%self.size, self.fij[i])?;
+            }
+            else if i < 3*self.size*self.size {
+                writeln!(f, "F_[{},{}]^[{DOWNARROW}, {UPARROW}]={:>width$.05e}", i/self.size - 2*self.size, i%self.size, self.fij[i])?;
+            }
+            else {
+                writeln!(f, "F_[{},{}]^[{DOWNARROW}, {DOWNARROW}]={:>width$.05e}", i/self.size - 3*self.size, i%self.size, self.fij[i])?;
+            }
+        }
+        for i in 0..self.size*self.size {
+            writeln!(f, "V_[{},{}]={:>width$.05e}", i/self.size, i%self.size, self.vij[i])?;
+        }
+        for i in 0..self.size {
+            writeln!(f, "G_[{}]={:>width$.05e}", i, self.gi[i])?;
+        }
+        Ok(())
+    }
 }
 
 /// The operator $O_k$
@@ -49,7 +77,7 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
         let mut expval = "<O> = ".to_owned();
         let mut ho = "<HO> = ".to_owned();
         let mut o_tilde = "O = ".to_owned();
-        for mu in 0..self.mu as usize {
+        for mu in 0..(self.mu + 1) as usize {
             expval.push_str(&format!("{:>width$.04e} ", self.expval_o[mu]));
             ho.push_str(&format!("{:>width$.04e} ", self.ho[mu]));
             for n in 0..self.n as usize {
