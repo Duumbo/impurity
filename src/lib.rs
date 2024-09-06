@@ -8,6 +8,8 @@ use pyo3::prelude::*;
 /// column is for the parameters identifier.
 pub mod parse;
 
+mod strings;
+
 // Have the FockState struct at the root.
 include!("fock_state.rs");
 
@@ -39,6 +41,32 @@ pub struct DerivativeOperator<'a> {
     pub pfaff_off: usize,
     pub jas_off: usize,
     pub epsilon: f64,
+}
+
+impl<'a> std::fmt::Display for DerivativeOperator<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let width = 10;
+        let mut expval = "<O> = ".to_owned();
+        let mut ho = "<HO> = ".to_owned();
+        let mut o_tilde = "O = ".to_owned();
+        for mu in 0..self.mu as usize {
+            expval.push_str(&format!("{:>width$.04e} ", self.expval_o[mu]));
+            ho.push_str(&format!("{:>width$.04e} ", self.ho[mu]));
+            for n in 0..self.n as usize {
+                o_tilde.push_str(&format!("{:>width$.04e}", self.o_tilde[n + n * mu]));
+            }
+            o_tilde.push_str("\n");
+        }
+        expval.push_str("\n");
+        ho.push_str("\n");
+        o_tilde.push_str("\n");
+        write!(f, "{}", expval)?;
+        write!(f, "{}", ho)?;
+        write!(f, "{}", o_tilde)?;
+        write!(f, "mu = {}", self.mu)?;
+        Ok(())
+
+    }
 }
 
 /// Module to calculate pfaffian

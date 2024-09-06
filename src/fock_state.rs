@@ -6,10 +6,22 @@ use rand::distributions::{Distribution, Standard};
 use std::fmt;
 use log::error;
 
+use strings::{UPARROW, DOWNARROW};
+
 #[derive(Copy, Clone, Debug)]
 pub enum Spin {
     Up,
     Down,
+}
+
+impl std::fmt::Display for Spin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self {
+            Spin::Up => write!(f, "{UPARROW}"),
+            Spin::Down => write!(f, "{DOWNARROW}"),
+        }?;
+        Ok(())
+    }
 }
 
 /// Abstraction layer for common bitwise operations.
@@ -443,7 +455,7 @@ impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
         let nelec = (sup.count_ones() + sdo.count_ones()) as usize;
         let mut out_hoppings: Vec<(usize, usize, Spin)> = Vec::with_capacity(4 * nelec);
 
-        for j in 1..SIZE/2 + 1 {
+        for j in 1..self.n_sites /2 + 1 {
             // See note 2024-06-08, rotate right gives all the horizontal links.
             // We need to go to j up to SIZE / 2
             let bitmask = <T>::from(bitmask[j - 1]);
