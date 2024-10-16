@@ -445,16 +445,17 @@ fn rot_right<T: BitOps>(s: T, n: usize, size: usize) -> T {
 
 pub trait Hopper {
     fn generate_all_hoppings(self: &Self, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)>;
+    fn generate_all_exchange(self: &Self) -> Vec<(usize, usize)>;
 }
 
 impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
     fn generate_all_hoppings(self: &FockState<T>, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)> {
-        // This is the linear periodic version of the function
         let sup = self.spin_up;
         let sdo = self.spin_down;
         let nelec = (sup.count_ones() + sdo.count_ones()) as usize;
         let mut out_hoppings: Vec<(usize, usize, Spin)> = Vec::with_capacity(4 * nelec);
 
+        // Hopping updates
         for j in 1..self.n_sites /2 + 1 {
             // See note 2024-06-08, rotate right gives all the horizontal links.
             // We need to go to j up to SIZE / 2
@@ -497,6 +498,47 @@ impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
 
         out_hoppings
     }
+
+    fn generate_all_exchange(self: &Self) -> Vec<(usize, usize)> {
+        // TODO: UNOPTMISED
+        // There are n choose 2 elements, so n(n-1)/2 terms, where n: nelec, roughly
+        let sup = self.spin_up;
+        let mut sup_copy = sup;
+        let sdo = self.spin_down;
+        let mut sdown_copy = sdo;
+        let mut possible_exchange = sup ^ sdo;
+        let mut i = possible_exchange.leading_zeros() as usize;
+        let mut out_exchanges: Vec<(usize, usize)> = Vec::new();
+        let mut j;
+
+        while i < self.n_sites {
+            let flag = sup.check(i);
+            // Chosen spin up
+            if flag {
+                j = sdown_copy.leading_zeros() as usize;
+                while j < self.n_sites {
+                    out_exchanges.push((i, j));
+                    sdown_copy.set(j);
+                    j = sdown_copy.leading_zeros() as usize;
+                }
+                sdown_copy = sdo;
+            }
+            // Chose spin down
+            else {
+                j = sup_copy.leading_zeros() as usize;
+                while j < self.n_sites {
+                    out_exchanges.push((j, i));
+                    sup_copy.set(j);
+                    j = sup_copy.leading_zeros() as usize;
+                }
+                sup_copy = sup;
+            }
+            possible_exchange.set(i);
+            i = possible_exchange.leading_zeros() as usize;
+        }
+
+        out_exchanges
+    }
 }
 
 // Interface for random state generation
@@ -515,6 +557,7 @@ impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribu
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
     fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> Self;
+    fn generate_exchange<R: Rng + ?Sized>(self: &Self, rng: &mut R, out_idx: &mut (usize, usize)) -> Self;
 }
 
 impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
@@ -553,6 +596,7 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
 
         match hop.2 {
             Spin::Up => {
+                // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
                 sup.set(hop.0);
                 sup.set(hop.1);
             },
@@ -571,6 +615,31 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
             spin_down: sdown,
         }
 
+    }
+
+    fn generate_exchange<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, out_idx: &mut (usize, usize)) -> FockState<T> {
+        // TODO: This is not so cheap. Perhaps change this to generate only a pair.
+        let all_exchanges = self.generate_all_exchange();
+
+        let rand_index = rng.gen_range(0..all_exchanges.len());
+        let exchange = all_exchanges[rand_index];
+
+        let mut sup = self.spin_up;
+        let mut sdo = self.spin_up;
+        // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
+        sup.set(exchange.0);
+        sup.set(exchange.1);
+        sdo.set(exchange.0);
+        sdo.set(exchange.1);
+
+        out_idx.0 = exchange.0;
+        out_idx.1 = exchange.1;
+
+        FockState {
+            n_sites: self.n_sites,
+            spin_up: sup,
+            spin_down: sdo,
+        }
     }
 }
 

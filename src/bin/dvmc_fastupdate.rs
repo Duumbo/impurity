@@ -1,45 +1,40 @@
 use blas::{daxpy, dcopy, ddot, dnrm2, dscal, idamax};
-use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
 use log::{debug, error, info};
+use rand_mt::Mt64;
 use std::fs::File;
 use std::io::Write;
 
+use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
-const SIZE: usize = 2;
+const SEED: u64 = 1435;
+const SIZE: usize = 4;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*SIZE;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 100_000;
+const NMCSAMP: usize = 1_000;
 const NMCWARMUP: usize = 1_000;
-const CLEAN_UPDATE_FREQUENCY: usize = 8;
+const MCSAMPLE_INTERVAL: usize = 8;
+const NTHREADS: usize = 6;
+const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 8.0;
 const CONS_T: f64 = -1.0;
-const EPSILON_CG: f64 = 1e-10;
-const EPSILON_SPREAD: f64 = 0.02;
-const OPTIMISATION_TIME_STEP: f64 = 1e-3;
+const EPSILON_CG: f64 = 1e-16;
+const EPSILON_SPREAD: f64 = 0.0;
+const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const NOPTITER: usize = 10_000;
 
-const UPARROW: char = match std::char::from_u32(0x00002191) {
-    Some(v) => v,
-    None => panic!("Invalid unicode character uparrow"),
-};
-const DOWNARROW: char = match std::char::from_u32(0x00002193) {
-    Some(v) => v,
-    None => panic!("Invalid unicode character downarrow"),
-};
-
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
+    //0.0, 1.0, 1.0, 0.0,
     0.0, 1.0, 1.0, 0.0,
-//    0.0, 1.0, 1.0, 0.0,
-//    1.0, 0.0, 0.0, 1.0,
-//    1.0, 0.0, 0.0, 1.0,
-//    0.0, 1.0, 1.0, 0.0
+    1.0, 0.0, 0.0, 1.0,
+    1.0, 0.0, 0.0, 1.0,
+    0.0, 1.0, 1.0, 0.0
 ];
 
 fn log_system_parameters(e: f64, fp: &mut File, params: &VarParams, sys: &SysParams) {
@@ -105,65 +100,66 @@ fn main() {
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcsample: NMCSAMP,
         nmcwarmup: NMCWARMUP,
+        mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERENCE_SINGULARITY
     };
 
-    let mut rng = rand::thread_rng();
+    let mut rng = Mt64::new(SEED);
     //let parameters = generate_random_params(&mut rng);
-    //let mut all_params = vec![
-    //    -1.0, -1.0, -1.0, -1.0,
-    //    0.0, 2.0, 2.0, 2.0,
-    //    2.0, 0.0, 2.0, 2.0,
-    //    2.0, 2.0, 0.0, 2.0,
-    //    2.0, 2.0, 2.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //1.078313550425773	,
-    //0.007172274681240365,
-    //0.028714778076311877,
-    //0.09168843535310542	,
-    //0.04813118562079141	,
-    //1.0625398526882723	,
-    //0.08433353658389342	,
-    //0.002722470871706029,
-    //0.07270002762085896	,
-    //0.026989164590497917,
-    //0.007555596176108393,
-    //0.046284058565227465,
-    //0.011127921360085048,
-    //0.07287939415825727	,
-    //0.08138828369394709	,
-    //0.012799567556772274,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //];
     let mut all_params = vec![
-    1.562407471562315485e-06,
-    0.000000000000000000e+00,
-    0.0,
-    -8.118842052166648227e-01,
-    -8.118842052166648227e-01,
-    0.0,
-    0.0, 0.0, 0.0, 0.0,
-    3.164959324156415558e-09,
-    0.000000000000000000e+00,
-    1.085729148576013436e-01,
-    5.081151859270597294e-10,
-    0.000000000000000000e+00,
-    3.716078461869162797e-01,
-    1.021423240920808689e-05,
-    0.000000000000000000e+00,
-    0.0, 0.0, 0.0, 0.0,
+        -1.0, -1.0, -1.0, -1.0,
+        0.0, 2.0, 2.0, 2.0,
+        2.0, 0.0, 2.0, 2.0,
+        2.0, 2.0, 0.0, 2.0,
+        2.0, 2.0, 2.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+    1.078313550425773	,
+    0.007172274681240365,
+    0.028714778076311877,
+    0.09168843535310542	,
+    0.04813118562079141	,
+    1.0625398526882723	,
+    0.08433353658389342	,
+    0.002722470871706029,
+    0.07270002762085896	,
+    0.026989164590497917,
+    0.007555596176108393,
+    0.046284058565227465,
+    0.011127921360085048,
+    0.07287939415825727	,
+    0.08138828369394709	,
+    0.012799567556772274,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
     ];
+    //let mut all_params = vec![
+    //1.562407471562315485e-06,
+    //0.000000000000000000e+00,
+    //0.0,
+    //-8.118842052166648227e-01,
+    //-8.118842052166648227e-01,
+    //0.0,
+    //0.0, 0.0, 0.0, 0.0,
+    //3.164959324156415558e-09,
+    //0.000000000000000000e+00,
+    //1.085729148576013436e-01,
+    //5.081151859270597294e-10,
+    //0.000000000000000000e+00,
+    //3.716078461869162797e-01,
+    //1.021423240920808689e-05,
+    //0.000000000000000000e+00,
+    //0.0, 0.0, 0.0, 0.0,
+    //];
     let (gi, params) = all_params.split_at_mut(NGI);
     let (vij, fij) = params.split_at_mut(NVIJ);
     let mut parameters = VarParams {
@@ -193,6 +189,7 @@ fn main() {
         ho: &mut expval_ho,
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: NMCSAMP as f64,
+        nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
         visited: &mut visited,
         pfaff_off: NGI + NVIJ,
@@ -205,7 +202,9 @@ fn main() {
     info!("Nsites: {}", state.n_sites);
 
     for opt_iter in 0..NOPTITER {
-        let mean_energy = compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative);
+        let mean_energy = {
+            compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
+        };
 
         let mut x0 = vec![0.0; NFIJ + NVIJ + NGI];
         x0[(NGI + NVIJ)..(NGI + NVIJ + NFIJ)].copy_from_slice(parameters.fij);
@@ -247,7 +246,6 @@ fn main() {
         //    dscal(NPARAMS as i32, ratio, parameters.gi, incx)
         //}
         //info!("Scaled parameters by ratio = {}", ratio);
-        //
 
         // JastrowGutzwiller Shifting
         let mut shift = 0.0;

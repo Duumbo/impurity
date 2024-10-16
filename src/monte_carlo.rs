@@ -10,6 +10,27 @@ use crate::density::{compute_internal_product_parts, fast_internal_product};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
 
+//fn propose_exchange
+//<R: Rng + ?Sized,
+//T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
+//(
+//    state: &FockState<T>,
+//    pfaff_state: &PfaffianState,
+//    previous_proj: &mut f64,
+//    exchange: &mut (usize, usize),
+//    rng: &mut R,
+//    params: &VarParams,
+//    sys: &SysParams,
+//) -> (f64, FockState<T>, Vec<f64>, usize)
+//    where Standard: Distribution<T>
+//{
+//    let state2 = state.generate_exchange(rng, exchange);
+//    let (ratio_ip, updated_column, col_idx) = {
+//        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params)
+//    };
+//    (ratio_ip, state2, updated_column, col_idx)
+//}
+
 fn propose_hopping
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
@@ -75,6 +96,7 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
     proj_copy: &mut f64,
     proj_copy_persistent: &mut f64,
     ratio: &f64,
+    ratio_prod: &mut f64,
     state: &mut FockState<T>,
     state2: &FockState<T>,
     hop: &(usize, usize, Spin),
@@ -82,31 +104,31 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
     colidx: usize,
     pstate: &mut PfaffianState,
     params: &VarParams,
-    der: &mut DerivativeOperator,
     sys: &SysParams
 ) {
     // Clean update once in a while
     // written in this way for branch prediction.
-    der.mu += 1;
     if *n < sys.clean_update_frequency {
         *state = *state2;
         *proj = *proj_copy;
         update_pstate(pstate, *hop, col, colidx);
+        *ratio_prod *= ratio;
     } else {
         let tmp_pfaff = pstate.pfaff;
         (*pstate, *proj) = compute_internal_product_parts(*state2, params);
         let inverse_proj = <f64>::exp(*proj_copy_persistent - *proj);
-        let err = <f64>::abs(<f64>::abs(tmp_pfaff * *ratio * inverse_proj) - <f64>::abs(pstate.pfaff));
+        let err = <f64>::abs(<f64>::abs(tmp_pfaff * *ratio * *ratio_prod * inverse_proj) - <f64>::abs(pstate.pfaff));
         if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
             warn!("Updated matrix is probably singular, got pfaffian {:.2e} and Tolerence is : {:e}.", pstate.pfaff, sys.tolerance_singularity);
         }
         trace!("PfaffianState after clean update: {:?}", pstate);
         if err >= sys.tolerance_sherman_morrison {
-            warn!("Sherman-Morrisson update error of {:.2e} on computed pfaffian. Tolerence is : {:e}. Ratio was {}", err, sys.tolerance_sherman_morrison, ratio);
+            warn!("Sherman-Morrisson update error of {:.2e} on computed pfaffian. Tolerence is : {:e}. Expected {}, got {}", err, sys.tolerance_sherman_morrison, tmp_pfaff * *ratio * *ratio_prod * inverse_proj, pstate.pfaff);
         }
         *n = 0;
         *state = *state2;
         *proj_copy_persistent = *proj;
+        *ratio_prod = 1.0;
     }
 }
 
@@ -126,6 +148,8 @@ where Standard: Distribution<T>
     let mut n_accepted_updates: usize = 0;
     let mut energy: f64 = 0.0;
     let mut proj_copy_persistent = proj;
+    let mut ratio_prod = 1.0;
+    let mut sample_counter: usize = 0;
 
     info!("Starting the warmup phase.");
     // Warmup
@@ -146,6 +170,7 @@ where Standard: Distribution<T>
                 &mut proj_copy,
                 &mut proj_copy_persistent,
                 &ratio,
+                &mut ratio_prod,
                 &mut state,
                 &state2,
                 &hop,
@@ -153,7 +178,6 @@ where Standard: Distribution<T>
                 colidx,
                 &mut pstate,
                 params,
-                derivatives,
                 sys
             );
 
@@ -166,7 +190,7 @@ where Standard: Distribution<T>
     derivatives.mu = 0;
     // Compute the derivative for the first element in the markov chain
     compute_derivative_operator(state, &pstate, derivatives, params, sys);
-    for mc_it in 0..sys.nmcsample {
+    for _mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
         let (ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
@@ -185,6 +209,7 @@ where Standard: Distribution<T>
                 &mut proj_copy,
                 &mut proj_copy_persistent,
                 &ratio,
+                &mut ratio_prod,
                 &mut state,
                 &state2,
                 &hop,
@@ -192,33 +217,39 @@ where Standard: Distribution<T>
                 colidx,
                 &mut pstate,
                 params,
-                derivatives,
                 sys
             );
             // Compute the derivative operator
-            compute_derivative_operator(state, &pstate, derivatives, params, sys);
+            if sample_counter >= sys.mcsample_interval {
+                derivatives.mu += 1;
+                compute_derivative_operator(state, &pstate, derivatives, params, sys);
+            }
         }
-        derivatives.visited[derivatives.mu as usize] += 1;
-        // Accumulate energy
-        let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
-        energy += state_energy;
-        // Accumulate <HO_m>
-        unsafe {
-            let incx = 1;
-            let incy = 1;
-            daxpy(
-                derivatives.n,
-                state_energy,
-                &derivatives.o_tilde[(derivatives.n * derivatives.mu) as usize .. (derivatives.n * (derivatives.mu + 1)) as usize],
-                incx,
-                &mut derivatives.ho,
-                incy
-            );
+        if sample_counter >= sys.mcsample_interval {
+            // Accumulate energy
+            derivatives.visited[derivatives.mu as usize] += 1;
+            let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
+            energy += state_energy;
+            // Accumulate <HO_m>
+            unsafe {
+                let incx = 1;
+                let incy = 1;
+                daxpy(
+                    derivatives.n,
+                    state_energy,
+                    &derivatives.o_tilde[(derivatives.n * derivatives.mu) as usize .. (derivatives.n * (derivatives.mu + 1)) as usize],
+                    incx,
+                    &mut derivatives.ho,
+                    incy
+                );
+            }
+            // Accumulate the derivative operators
+            for i in 0 .. derivatives.n as usize {
+                derivatives.expval_o[i] += derivatives.o_tilde[i + (derivatives.n * derivatives.mu) as usize];
+            }
+            sample_counter = 0;
         }
-        // Accumulate the derivative operators
-        for i in 0 .. derivatives.n as usize {
-            derivatives.expval_o[i] += derivatives.o_tilde[i + (derivatives.n * derivatives.mu) as usize];
-        }
+        sample_counter += 1;
 
     }
     derivatives.mu += 1;

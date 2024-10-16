@@ -214,10 +214,10 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
     trace!("Inverse matrix {}", pstate);
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
-            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices[ii] + size*size + (der.n * der.mu) as usize] -= a[ii * n + (jj + off)];
-            trace!("~O_[{}, {}] = {}", der.pfaff_off + indices2[jj] + size * indices[ii] + size * size, der.mu, a[ii * n + (jj + off)]);
-            der.o_tilde[der.pfaff_off + indices[ii] + size * indices2[jj] + 2*size*size + (der.n * der.mu) as usize] -= a[(jj + off) * n + ii];
-            trace!("~O_[{}, {}] = {}", der.pfaff_off + indices[ii] + size * indices2[jj] + 2 * size * size, der.mu, a[(jj + off) * n + ii]);
+            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices[ii] + size*size + (der.n * der.mu) as usize] = -a[ii * n + (jj + off)];
+            trace!("~O_[{}, {}] = {}", der.pfaff_off + indices2[jj] + size * indices[ii] + size * size, der.mu, -a[ii * n + (jj + off)]);
+            der.o_tilde[der.pfaff_off + indices[ii] + size * indices2[jj] + 2*size*size + (der.n * der.mu) as usize] = -a[(jj + off) * n + ii];
+            trace!("~O_[{}, {}] = {}", der.pfaff_off + indices[ii] + size * indices2[jj] + 2 * size * size, der.mu, -a[(jj + off) * n + ii]);
         }
     }
     for jj in 0..indices.len() {
@@ -225,8 +225,8 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
             if indices[ii] == indices[jj] {
                 continue;
             }
-            der.o_tilde[der.pfaff_off + indices[ii] + size * indices[jj] + (der.n * der.mu) as usize] -= a[ii + jj * n];
-            der.o_tilde[der.pfaff_off + indices[jj] + size * indices[ii] + (der.n * der.mu) as usize] -= a[jj + ii * n];
+            der.o_tilde[der.pfaff_off + indices[ii] + size * indices[jj] + (der.n * der.mu) as usize] = -a[ii + jj * n];
+            der.o_tilde[der.pfaff_off + indices[jj] + size * indices[ii] + (der.n * der.mu) as usize] = -a[jj + ii * n];
         }
     }
     for jj in 0..indices2.len() {
@@ -234,8 +234,8 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
             if indices2[ii] == indices2[jj] {
                 continue;
             }
-            der.o_tilde[der.pfaff_off + indices2[ii] + size * indices2[jj] + 3*size*size + (der.n * der.mu) as usize] -= a[ii + off + (jj + off) * n];
-            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices2[ii] + 3*size*size + (der.n * der.mu) as usize] -= a[jj + off + (ii + off) * n];
+            der.o_tilde[der.pfaff_off + indices2[ii] + size * indices2[jj] + 3*size*size + (der.n * der.mu) as usize] = -a[ii + off + (jj + off) * n];
+            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices2[ii] + 3*size*size + (der.n * der.mu) as usize] = -a[jj + off + (ii + off) * n];
         }
     }
 }

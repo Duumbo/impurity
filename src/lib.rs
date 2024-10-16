@@ -65,6 +65,7 @@ pub struct DerivativeOperator<'a> {
     /// Number of monte-carlo sampling
     pub mu: i32,
     pub nsamp: f64,
+    pub nsamp_int: usize,
     pub visited: &'a mut [usize],
     pub pfaff_off: usize,
     pub jas_off: usize,

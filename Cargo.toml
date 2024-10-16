@@ -23,11 +23,14 @@ lapack-sys = "0.14.0"
 blas-sys = "0.7.1"
 # Source crates
 # Intel implementation.
-intel-mkl-src = "0.8.1"
+intel-mkl-src = {version = "0.8.1", features = ["mkl-dynamic-lp64-iomp"]}
 # Openblas implementation.
 # openblas-src = "0.10.8"
 # For python interface
 pyo3 = {version = "0.21.2", features = ["extension-module"], optional = true}
+rayon = "1.10.0"
+# Mersenne Twister
+rand_mt = {version = "4.2.2", features = ["rand_core"]}
 
 [dependencies.rand]
 version = "0.8.5"
