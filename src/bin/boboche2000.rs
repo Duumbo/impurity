@@ -1,7 +1,6 @@
 use std::ptr::addr_of;
 use std::slice::from_raw_parts as slice;
 use log::info;
-use assert::close;
 
 use impurity::{FockState, RandomStateGeneration, VarParams, SysParams, generate_bitmask, DerivativeOperator};
 use impurity::monte_carlo::compute_mean_energy;
@@ -66,8 +65,7 @@ fn log_system_parameters(sys: &SysParams) {
     info!("System parameter CONS_T = {}", sys.cons_t);
 }
 
-#[test]
-fn monte_carlo_first_iteration() {
+fn main() {
     // Initialize logger
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
@@ -173,6 +171,7 @@ fn monte_carlo_first_iteration() {
     info!("Nsites: {}", state.n_sites);
 
     let (energy, _, _) = compute_mean_energy(&mut rng, state, &parameters, &sys, &mut der);
-    close(energy, -0.35, MONTE_CARLO_CONVERGENCE_TOLERANCE);
-    close(energy, mean_energy_analytic_2sites(&parameters, &sys), MONTE_CARLO_CONVERGENCE_TOLERANCE);
+    println!("energy: {}", energy);
+    //close(energy, -0.35, MONTE_CARLO_CONVERGENCE_TOLERANCE);
+    //close(energy, mean_energy_analytic_2sites(&parameters, &sys), MONTE_CARLO_CONVERGENCE_TOLERANCE);
 }

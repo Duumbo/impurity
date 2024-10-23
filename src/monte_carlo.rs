@@ -1,5 +1,5 @@
 use blas::daxpy;
-use log::{info, trace, warn};
+use log::{error, info, trace, warn};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 
@@ -135,21 +135,32 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
-(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> f64
+(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64)
 where Standard: Distribution<T>
 {
     if derivatives.mu != -1 {
         warn!("The derivative operator current row was mu = {} on entry, is it reinitialized?", derivatives.mu);
     }
     let mut state = initial_state;
+    let mut accumulated_states: Vec<FockState<T>> = Vec::new();
     let (mut pstate, mut proj) = compute_internal_product_parts(state, params);
     let mut hop: (usize, usize, Spin) = (0, 0, Spin::Up);
     let mut _lip = <f64>::ln(<f64>::abs(<f64>::exp(proj) * pstate.pfaff)) * 2.0;
     let mut n_accepted_updates: usize = 0;
     let mut energy: f64 = 0.0;
+    let mut energy_sq: f64 = 0.0;
     let mut proj_copy_persistent = proj;
     let mut ratio_prod = 1.0;
     let mut sample_counter: usize = 0;
+    if <f64>::log2(sys.nmcsample as f64) <= 5.0 {
+        error!("Not enough monte-carlo sample for an accurate error estimation. NMCSAMPLE = {}", sys.nmcsample);
+        panic!("NMCSAMPLE is less than 32.");
+    }
+    let error_estimation_level = <f64>::log2(sys.nmcsample as f64) as usize - 5;
+    let mut energy_sums = vec![0.0; error_estimation_level];
+    let mut energy_quad_sums = vec![0.0; error_estimation_level];
+    let mut previous_energies = vec![0.0; error_estimation_level + 1];
+    let mut n_values = vec![0; error_estimation_level];
 
     info!("Starting the warmup phase.");
     // Warmup
@@ -190,7 +201,7 @@ where Standard: Distribution<T>
     derivatives.mu = 0;
     // Compute the derivative for the first element in the markov chain
     compute_derivative_operator(state, &pstate, derivatives, params, sys);
-    for _mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
+    for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
         let (ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
@@ -226,10 +237,26 @@ where Standard: Distribution<T>
             }
         }
         if sample_counter >= sys.mcsample_interval {
+            accumulated_states.push(state);
             // Accumulate energy
             derivatives.visited[derivatives.mu as usize] += 1;
             let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
             energy += state_energy;
+            energy_sq += state_energy*state_energy;
+            // Energy error estimation
+            let accumulation_level = <f32>::log2((mc_it + 1) as f32) as usize;
+            for i in 0..accumulation_level {
+                if i >= error_estimation_level { break;}
+                if i == accumulation_level - 1{
+                    if i == 0 {break;}
+                    previous_energies[i] = energy_sums[i - 1];
+                } else {
+                    n_values[i] += 1;
+                    energy_sums[i] += 0.5 * (previous_energies[i] + state_energy);
+                    energy_quad_sums[i] += 0.5 * (previous_energies[i]*previous_energies[i] + state_energy*state_energy);
+                }
+            }
+
             // Accumulate <HO_m>
             unsafe {
                 let incx = 1;
@@ -256,5 +283,14 @@ where Standard: Distribution<T>
     info!("Final Energy: {:.2}", energy);
     energy = energy / sys.nmcsample as f64;
     info!("Final Energy normalized: {:.2}", energy);
-    energy
+    // Error estimation
+    let mut error = vec![0.0; error_estimation_level];
+    //for i in 0..error_estimation_level {
+    //    error[i] = <f64>::sqrt(
+    //        (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / (n_values[i] as f64)) /
+    //        (n_values[i] * (n_values[i] - 1)) as f64
+    //        )
+    //}
+    let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
+    (energy, accumulated_states, correlation_time)
 }

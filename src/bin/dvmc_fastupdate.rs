@@ -1,6 +1,7 @@
 use blas::{daxpy, dcopy, ddot, dnrm2, dscal, idamax};
 use log::{debug, error, info};
 use rand_mt::Mt64;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
@@ -8,21 +9,21 @@ use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
-const SEED: u64 = 1435;
+const SEED: u64 = 1434;
 const SIZE: usize = 4;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*SIZE;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1_000;
-const NMCWARMUP: usize = 1_000;
-const MCSAMPLE_INTERVAL: usize = 8;
+const NMCSAMP: usize = 100_000;
+const NMCWARMUP: usize = 1000;
+const MCSAMPLE_INTERVAL: usize = 1;
 const NTHREADS: usize = 6;
-const CLEAN_UPDATE_FREQUENCY: usize = 32;
+const CLEAN_UPDATE_FREQUENCY: usize = 8;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
-const CONS_U: f64 = 8.0;
+const CONS_U: f64 = 1.0;
 const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SPREAD: f64 = 0.0;
@@ -37,7 +38,30 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0
 ];
 
-fn log_system_parameters(e: f64, fp: &mut File, params: &VarParams, sys: &SysParams) {
+fn sq(a: f64) -> f64 {
+    <f64>::abs(a) * <f64>::abs(a)
+}
+
+fn mean_energy_analytic_2sites(params: &VarParams, _sys: &SysParams) -> f64 {
+    let f00 = params.fij[0 + SIZE*SIZE] - params.fij[0 + 2*SIZE*SIZE];
+    let f01 = params.fij[1 + SIZE*SIZE] - params.fij[2 + 2*SIZE*SIZE];
+    let f10 = params.fij[2 + SIZE*SIZE] - params.fij[1 + 2*SIZE*SIZE];
+    let f11 = params.fij[3 + SIZE*SIZE] - params.fij[3 + 2*SIZE*SIZE];
+    let f1 = f01 + f10;
+    let f0 = f11 * <f64>::exp(params.gi[1] - params.vij[1]);
+    let f2 = f00 * <f64>::exp(params.gi[0] - params.vij[1]);
+    let f4 = f0 + f2;
+    let exp0 = 2.0 * (params.gi[0] + params.vij[1]);
+    let exp1 = 2.0 * (params.gi[1] + params.vij[1]);
+    let num = 2.0 * f1 * f4 * CONS_T + sq(f0) * CONS_U + sq(f2) * CONS_U;
+    let deno =
+        sq(f00) * <f64>::exp(-exp0) +
+        sq(f01) + sq(f10) +
+        sq(f11) * <f64>::exp(-exp1);
+    num / deno
+}
+
+fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params: &VarParams, sys: &SysParams) {
     let fij = &params.fij;
     let vij = &params.vij;
     let gi = &params.gi;
@@ -51,6 +75,8 @@ fn log_system_parameters(e: f64, fp: &mut File, params: &VarParams, sys: &SysPar
     debug!("System parameter TOLERENCE_SHERMAN_MORRISSON = {}", TOLERENCE_SHERMAN_MORRISSON);
     debug!("\n{}", params);
     let mut params = format!("{:+>.05e}  ", e).to_owned();
+    params.push_str(&format!("{:+>.05e}  ", ae).to_owned());
+    params.push_str(&format!("{:+>.05e}  ", corr_time).to_owned());
     for i in 0..4*SIZE*SIZE {
         let a = format!("{:+>.05e} ", fij[i]);
         params.push_str(&a);
@@ -83,6 +109,8 @@ fn zero_out_derivatives(der: &mut DerivativeOperator) {
 
 fn main() {
     let mut fp = File::create("params").unwrap();
+    let mut statesfp = File::create("states").unwrap();
+    let mut save: bool = true;
     // Initialize logger
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
@@ -143,23 +171,48 @@ fn main() {
         0.0, 0.0, 0.0, 0.0,
     ];
     //let mut all_params = vec![
-    //1.562407471562315485e-06,
-    //0.000000000000000000e+00,
+    //-1.562407471562315485e-06,
+    //-1.562407471562315485e-06,
     //0.0,
     //-8.118842052166648227e-01,
     //-8.118842052166648227e-01,
     //0.0,
     //0.0, 0.0, 0.0, 0.0,
-    //3.164959324156415558e-09,
-    //0.000000000000000000e+00,
-    //1.085729148576013436e-01,
-    //5.081151859270597294e-10,
-    //0.000000000000000000e+00,
-    //3.716078461869162797e-01,
-    //1.021423240920808689e-05,
-    //0.000000000000000000e+00,
+    ////2.992823494391085859e-01,
+    ////3.164984479189808504e-09,
+    ////0.0,
+    ////5.126018557775564588e-01,
+    ////-2.992823494391085859e-01,
+    ////0.0,
+    ////-3.164984479189808504e-09,
+    ////-5.126018557775564588e-01,
+    //0.04813118562079141	,
+    //1.0625398526882723	,
+    //0.08433353658389342	,
+    //0.002722470871706029,
+    //0.07270002762085896	,
+    //0.026989164590497917,
+    //0.007555596176108393,
+    //0.046284058565227465,
     //0.0, 0.0, 0.0, 0.0,
     //];
+    // Optimised params 2sites
+    //let mut all_params = vec![
+    //     2.992823494391085859e-01,
+    //    -8.118842052166648227e-01,
+    //    0.0,
+    //    -5.126018557775564588e-01,
+    //    -5.126018557775564588e-01,
+    //    0.0,
+    //    //0.000000000000000000e+00,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    1.085729148576013436e-01,
+    //    3.715326522320877012e-01,
+    //    3.716078461869162797e-01,
+    //    3.298336802820764357e-01,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    ];
     let (gi, params) = all_params.split_at_mut(NGI);
     let (vij, fij) = params.split_at_mut(NVIJ);
     let mut parameters = VarParams {
@@ -168,8 +221,8 @@ fn main() {
         vij,
         size: SIZE
     };
-    println!("fij {} {}", parameters.fij.len(), NFIJ);
-    log_system_parameters(0.0, &mut fp, &parameters, &system_params);
+    println!("{}", mean_energy_analytic_2sites(&parameters, &system_params));
+    //log_system_parameters(0.0, &mut fp, &parameters, &system_params);
 
     let state: FockState<u8> = {
         let mut tmp: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
@@ -201,10 +254,24 @@ fn main() {
     info!("Initial Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
     info!("Nsites: {}", state.n_sites);
 
+    let opt_progress_bar = ProgressBar::new(NOPTITER as u64);
+    opt_progress_bar.set_prefix("Optimisation Progress: ");
+    opt_progress_bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {prefix} {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+    .unwrap()
+    .progress_chars("##-"));
+
     for opt_iter in 0..NOPTITER {
-        let mean_energy = {
+        let (mean_energy, accumulated_states, correlation_time) = {
             compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
         };
+        if save {
+            let mut out_str: String = String::new();
+            for s in accumulated_states.iter() {
+                out_str.push_str(&format!("{}\n", s));
+            }
+            statesfp.write(out_str.as_bytes()).unwrap();
+            save = false;
+        }
 
         let mut x0 = vec![0.0; NFIJ + NVIJ + NGI];
         x0[(NGI + NVIJ)..(NGI + NVIJ + NFIJ)].copy_from_slice(parameters.fij);
@@ -269,12 +336,16 @@ fn main() {
             info!("Max was: {}", max);
             dscal(NFIJ as i32, 1.0 / max, parameters.fij, incx);
         }
-        log_system_parameters(mean_energy, &mut fp, &parameters, &system_params);
+        let analytic_energy = mean_energy_analytic_2sites(&parameters, &system_params);
+        log_system_parameters(mean_energy, analytic_energy, correlation_time, &mut fp, &parameters, &system_params);
         zero_out_derivatives(&mut derivative);
         let opt_delta = unsafe {
             let incx = 1;
             dnrm2(derivative.n, &x0, incx)
         };
-        error!("Changed parameters by norm {}", opt_delta);
+        //error!("Changed parameters by norm {}", opt_delta);
+        opt_progress_bar.inc(1);
+        opt_progress_bar.set_message(format!("Changed parameters by norm: {:+>.05e} Current energy: {:+>.05e}", opt_delta, mean_energy));
     }
+    opt_progress_bar.finish()
 }

@@ -31,6 +31,8 @@ pyo3 = {version = "0.21.2", features = ["extension-module"], optional = true}
 rayon = "1.10.0"
 # Mersenne Twister
 rand_mt = {version = "4.2.2", features = ["rand_core"]}
+# Progress bar
+indicatif = "0.17.8"
 
 [dependencies.rand]
 version = "0.8.5"
