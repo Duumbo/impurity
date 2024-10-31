@@ -185,6 +185,15 @@ where
     }
 
     // Invert matrix.
+    println!("X = {}",
+        PfaffianState {
+            n_elec: n,
+            n_sites: state.n_sites,
+            inv_matrix: a.clone(),
+            indices: (indices.clone(), indices2.clone()),
+            pfaff: 0.0,
+        }
+    );
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
 
@@ -566,6 +575,9 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
         )
     }
     assert_eq!(info, 0);
+    // We computed the pfaffian of the transpose. Pf(A^T)=(-1)^{n/2}Pf(A)
+    let sign: bool = (n % 4) == 2;
+    if sign {pfaff *= -1.0;}
     pfaff
 }
 
