@@ -2,6 +2,8 @@ use blas::daxpy;
 use log::{error, info, trace, warn};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
+use std::fs::File;
+use std::io::Write;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
@@ -54,9 +56,9 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
 
 fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
     let kin = kinetic(state, pstate, proj, params, sys);
-    let e = kin + potential(state, sys);
+    let e = kin + potential(state, proj, pstate, sys);
     trace!("Hamiltonian application <x|H|psi> = {} for state: |x> = {}", e, state);
-    e
+    e / (pstate.pfaff * <f64>::exp(proj))
 }
 
 fn get_sign<T: BitOps>(s1: &FockState<T>, hop: &(usize, usize, Spin)) -> usize {
@@ -138,6 +140,7 @@ T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
 (rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64)
 where Standard: Distribution<T>
 {
+    let mut ratiofp = File::create("ratios").unwrap();
     if derivatives.mu != -1 {
         warn!("The derivative operator current row was mu = {} on entry, is it reinitialized?", derivatives.mu);
     }
@@ -166,10 +169,11 @@ where Standard: Distribution<T>
     // Warmup
     for _ in 0..sys.nmcwarmup {
         let mut proj_copy = proj;
-        let (ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
+        let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
         trace!("Current state: {}", state);
         trace!("Proposed state: {}", state2);
         trace!("Ratio: {}", ratio);
+        ratio *= <f64>::exp(proj_copy - proj);
         let w = rng.gen::<f64>();
         if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
             // We ACCEPT
@@ -204,12 +208,14 @@ where Standard: Distribution<T>
     for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
-        let (ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
+        let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
         trace!("After proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
         trace!("Current state: {}", state);
         trace!("Proposed state: {}", state2);
         trace!("Ratio: {}", ratio);
+        ratio *= <f64>::exp(proj_copy - proj);
         let w = rng.gen::<f64>();
+        ratiofp.write(format!("De {}, à {} = {}\n", state, state2, <f64>::abs(ratio) * <f64>::abs(ratio)).as_bytes()).unwrap();
         if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
             // We ACCEPT
             trace!("Accept.");
@@ -285,12 +291,12 @@ where Standard: Distribution<T>
     info!("Final Energy normalized: {:.2}", energy);
     // Error estimation
     let mut error = vec![0.0; error_estimation_level];
-    //for i in 0..error_estimation_level {
-    //    error[i] = <f64>::sqrt(
-    //        (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / (n_values[i] as f64)) /
-    //        (n_values[i] * (n_values[i] - 1)) as f64
-    //        )
-    //}
+    for i in 0..error_estimation_level {
+        error[i] = <f64>::sqrt(
+            (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / (n_values[i] as f64)) /
+            (n_values[i] * (n_values[i] - 1)) as f64
+            )
+    }
     let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
     (energy, accumulated_states, correlation_time)
 }

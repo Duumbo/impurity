@@ -10,17 +10,17 @@ use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGener
 use impurity::monte_carlo::compute_mean_energy;
 
 const SEED: u64 = 1434;
-const SIZE: usize = 4;
+const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*SIZE;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 100_000;
+const NMCSAMP: usize = 10_000;
 const NMCWARMUP: usize = 1000;
-const MCSAMPLE_INTERVAL: usize = 1;
+const MCSAMPLE_INTERVAL: usize = 2;
 const NTHREADS: usize = 6;
-const CLEAN_UPDATE_FREQUENCY: usize = 8;
+const CLEAN_UPDATE_FREQUENCY: usize = 2;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
@@ -28,37 +28,64 @@ const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SPREAD: f64 = 0.0;
 const OPTIMISATION_TIME_STEP: f64 = 1e-2;
-const NOPTITER: usize = 10_000;
+const NOPTITER: usize = 1_000;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
-    //0.0, 1.0, 1.0, 0.0,
     0.0, 1.0, 1.0, 0.0,
-    1.0, 0.0, 0.0, 1.0,
-    1.0, 0.0, 0.0, 1.0,
-    0.0, 1.0, 1.0, 0.0
+    //0.0, 1.0, 1.0, 0.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //0.0, 1.0, 1.0, 0.0
 ];
 
 fn sq(a: f64) -> f64 {
     <f64>::abs(a) * <f64>::abs(a)
 }
 
-fn mean_energy_analytic_2sites(params: &VarParams, _sys: &SysParams) -> f64 {
-    let f00 = params.fij[0 + SIZE*SIZE] - params.fij[0 + 2*SIZE*SIZE];
-    let f01 = params.fij[1 + SIZE*SIZE] - params.fij[2 + 2*SIZE*SIZE];
-    let f10 = params.fij[2 + SIZE*SIZE] - params.fij[1 + 2*SIZE*SIZE];
-    let f11 = params.fij[3 + SIZE*SIZE] - params.fij[3 + 2*SIZE*SIZE];
-    let f1 = f01 + f10;
-    let f0 = f11 * <f64>::exp(params.gi[1] - params.vij[1]);
-    let f2 = f00 * <f64>::exp(params.gi[0] - params.vij[1]);
-    let f4 = f0 + f2;
-    let exp0 = 2.0 * (params.gi[0] + params.vij[1]);
-    let exp1 = 2.0 * (params.gi[1] + params.vij[1]);
-    let num = 2.0 * f1 * f4 * CONS_T + sq(f0) * CONS_U + sq(f2) * CONS_U;
-    let deno =
-        sq(f00) * <f64>::exp(-exp0) +
-        sq(f01) + sq(f10) +
-        sq(f11) * <f64>::exp(-exp1);
-    num / deno
+fn norm(par: &VarParams) -> f64 {
+    let f00ud = par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE];
+    let f00du = par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE];
+    let f11ud = par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE];
+    let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
+    let f01ud = par.fij[0 + 1 * SIZE + 1 * SIZE * SIZE];
+    let f10ud = par.fij[1 + 0 * SIZE + 1 * SIZE * SIZE];
+    let f01du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
+    let f10du = par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
+    let f01uu = par.fij[0 + 1 * SIZE + 0 * SIZE * SIZE];
+    let f10uu = par.fij[1 + 0 * SIZE + 0 * SIZE * SIZE];
+    let f01dd = par.fij[0 + 1 * SIZE + 3 * SIZE * SIZE];
+    let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
+    let g0 = par.gi[0];
+    let g1 = par.gi[1];
+    let v = par.vij[1];
+    let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
+    let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
+    let c = sq(<f64>::abs(f01uu - f10uu));
+    let d = sq(<f64>::abs(f01dd - f10dd));
+    let e = sq(<f64>::abs(f10ud - f01du));
+    let f = sq(<f64>::abs(f01ud - f10du));
+    a + c + d + b + e + f
+}
+
+fn mean_energy_analytic_2sites(par: &VarParams, _sys: &SysParams) -> f64 {
+    let a = par.fij[1 + 0 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE]
+        + par.fij[0 + 1 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
+    let b = (par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
+        * <f64>::exp(par.gi[0]-par.vij[1]);
+    let c = (par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
+        * <f64>::exp(par.gi[1]-par.vij[1]);
+    let d = 2.0 * CONS_T * (b + c) * a;
+    let e = sq(par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
+        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[1]) * CONS_U;
+    let f = sq(par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
+        - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
+        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[1]) * CONS_U;
+    (d + e + f) / norm(par)
 }
 
 fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params: &VarParams, sys: &SysParams) {
@@ -135,41 +162,41 @@ fn main() {
 
     let mut rng = Mt64::new(SEED);
     //let parameters = generate_random_params(&mut rng);
-    let mut all_params = vec![
-        -1.0, -1.0, -1.0, -1.0,
-        0.0, 2.0, 2.0, 2.0,
-        2.0, 0.0, 2.0, 2.0,
-        2.0, 2.0, 0.0, 2.0,
-        2.0, 2.0, 2.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-    1.078313550425773	,
-    0.007172274681240365,
-    0.028714778076311877,
-    0.09168843535310542	,
-    0.04813118562079141	,
-    1.0625398526882723	,
-    0.08433353658389342	,
-    0.002722470871706029,
-    0.07270002762085896	,
-    0.026989164590497917,
-    0.007555596176108393,
-    0.046284058565227465,
-    0.011127921360085048,
-    0.07287939415825727	,
-    0.08138828369394709	,
-    0.012799567556772274,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-    ];
+    //let mut all_params = vec![
+    //    -1.0, -1.0, -1.0, -1.0,
+    //    0.0, 2.0, 2.0, 2.0,
+    //    2.0, 0.0, 2.0, 2.0,
+    //    2.0, 2.0, 0.0, 2.0,
+    //    2.0, 2.0, 2.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //1.078313550425773	,
+    //0.007172274681240365,
+    //0.028714778076311877,
+    //0.09168843535310542	,
+    //0.04813118562079141	,
+    //1.0625398526882723	,
+    //0.08433353658389342	,
+    //0.002722470871706029,
+    //0.07270002762085896	,
+    //0.026989164590497917,
+    //0.007555596176108393,
+    //0.046284058565227465,
+    //0.011127921360085048,
+    //0.07287939415825727	,
+    //0.08138828369394709	,
+    //0.012799567556772274,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //    0.0, 0.0, 0.0, 0.0,
+    //];
     //let mut all_params = vec![
     //-1.562407471562315485e-06,
     //-1.562407471562315485e-06,
@@ -197,22 +224,26 @@ fn main() {
     //0.0, 0.0, 0.0, 0.0,
     //];
     // Optimised params 2sites
+    let mut all_params = vec![
+         2.992823494391085859e-01,
+        -8.118842052166648227e-01,
+        0.0,
+        -5.126018557775564588e-01,
+        -5.126018557775564588e-01,
+        0.0,
+        //0.000000000000000000e+00,
+        0.0, 0.0, 0.0, 0.0,
+        1.085729148576013436e-01,
+        3.715326522320877012e-01,
+        3.716078461869162797e-01,
+        3.298336802820764357e-01,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        ];
     //let mut all_params = vec![
-    //     2.992823494391085859e-01,
-    //    -8.118842052166648227e-01,
-    //    0.0,
-    //    -5.126018557775564588e-01,
-    //    -5.126018557775564588e-01,
-    //    0.0,
-    //    //0.000000000000000000e+00,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    1.085729148576013436e-01,
-    //    3.715326522320877012e-01,
-    //    3.716078461869162797e-01,
-    //    3.298336802820764357e-01,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    0.0, 0.0, 0.0, 0.0,
-    //    ];
+    //    5.92758e-1, 3.21916e-1,  -8.28016e-2, -6.48938e-1, -6.48938e-1, -8.28016e-2,
+    //    0.00000e0, 0.00000e0, 0.00000e0, 0.00000e0, 3.62549e-1, 9.99996e-1, 1.00000e0, 2.78345e-1, -3.62451e-1, -9.99666e-1, -9.99662e-1, -2.78049e-1, 0.00000e0, 0.00000e0, 0.00000e0, 0.00000e0
+    //];
     let (gi, params) = all_params.split_at_mut(NGI);
     let (vij, fij) = params.split_at_mut(NVIJ);
     let mut parameters = VarParams {
@@ -329,6 +360,8 @@ fn main() {
         for i in 0..NVIJ {
             parameters.vij[i] -= shift;
         }
+        // HARD CODE vij = vji
+        parameters.vij[1] = parameters.vij[2];
         // Slater Rescaling
         unsafe {
             let incx = 1;

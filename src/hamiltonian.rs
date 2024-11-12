@@ -17,13 +17,13 @@ use crate::{VarParams, Spin, SysParams};
 /// $$
 /// H_U=U\sum_i n_{i\uparrow}n_{i\downarrow}
 /// $$
-pub fn potential<T>(state: FockState<T>, sys: &SysParams) -> f64
+pub fn potential<T>(state: FockState<T>, proj: f64, pstate: &PfaffianState, sys: &SysParams) -> f64
 where
     T: BitOps,
 {
     let pot = ((state.spin_up & state.spin_down).count_ones() as f64) * sys.cons_u;
     trace!("Output potential <x|U|psi> = {:.2} for state |x> = {}", pot, state);
-    pot
+    pot * pstate.pfaff * <f64>::exp(proj)
 }
 
 /// Computes the kinetic term of the Hamiltonian.
@@ -59,9 +59,11 @@ where
         };
         let mut proj = previous_proj;
         let (ratio, _col, _colidx) = fast_internal_product_no_otilde(&state, &f_state, previous_pstate, &hop, &mut proj, params);
+        let pfaff = previous_pstate.pfaff * ratio;
+        let ip = pfaff * <f64>::exp(proj);
         trace!("Projection state: |x'> = {}, z = {}", f_state, ratio);
         trace!("Adding kinetic term t_[i,j]<x'|psi>: |x> = {}, |x'> = {}, hop = ({}, {}, {}) Computed <x'|psi>/<x|psi> = {}", state, f_state, hop.0, hop.1, hop.2, ratio);
-        kin += ratio*sys.cons_t*sys.transfert_matrix[hop.0 + hop.1*sys.size];
+        kin += ip*sys.cons_t*sys.transfert_matrix[hop.0 + hop.1*sys.size];
     }
 
     trace!("Output kinetic <x|K|psi> = {:.2} for state |x> = {}", kin, state);

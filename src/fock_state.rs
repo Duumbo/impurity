@@ -542,7 +542,7 @@ impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
 }
 
 // Interface for random state generation
-impl<T: BitOps> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
+impl<T: BitOps + std::fmt::Display> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FockState<T> {
         let su = rng.gen::<T>();
         let sd = rng.gen::<T>();

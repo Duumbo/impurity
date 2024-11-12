@@ -61,9 +61,6 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     let spin = hopping.2;
     let n_sites = new_state.n_sites;
 
-    // Take a copy of the projectors
-    let proj_cp = *previous_proj;
-
     let (pfaffian_ratio, b_vec, col) = {
         let fij = &params.fij;
         let vij = &params.vij;
@@ -84,9 +81,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     // Combine to get the internal product.
     trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
     trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
-    let true_ratio = pfaffian_ratio * <f64>::exp(*previous_proj - proj_cp);
-    trace!("Fast Computed <x'|psi>/<x|psi>: {}, |x'> = {}, |x> = {}", true_ratio, new_state, previous_state);
-    (true_ratio, b_vec, col)
+    (pfaffian_ratio, b_vec, col)
 }
 
 pub fn fast_internal_product<T>(
@@ -105,8 +100,8 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     let spin = hopping.2;
     let n_sites = new_state.n_sites;
 
-    // Take a copy of the projectors
-    let proj_cp = *previous_proj;
+    // TMP
+    let proj = previous_proj.clone();
 
     let (pfaffian_ratio, b_vec, col) = {
         let fij = &params.fij;
@@ -128,9 +123,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     // Combine to get the internal product.
     trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
     trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
-    let true_ratio = pfaffian_ratio * <f64>::exp(*previous_proj - proj_cp);
-    trace!("Fast Computed <x'|psi>/<x|psi>: {}, |x'> = {}, |x> = {}", true_ratio, new_state, previous_state);
-    (true_ratio, b_vec, col)
+    (pfaffian_ratio, b_vec, col)
 }
 
 #[cfg(feature = "python-interface")]

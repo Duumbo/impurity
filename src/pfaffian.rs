@@ -149,9 +149,13 @@ where
     // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
+            trace!("X_[{}, {}] = F^[up, down]_[{}, {}] - F^[down, up]_[{}, {}]",
+                jj + off, ii, indices2[jj], indices[ii], indices[ii], indices2[jj]);
             a[ii * n + (jj + off)] =
                 fij[indices2[jj] + size * indices[ii] + size*size]
                 -fij[indices[ii] + size * indices2[jj] + 2*size*size];
+            trace!("X_[{}, {}] = F^[up, down]_[{}, {}] - F^[down, up]_[{}, {}]",
+                ii, jj+off, indices[ii], indices2[jj], indices2[jj], indices[ii]);
             a[(jj + off) * n + ii] =
                 fij[indices[ii] + size * indices2[jj] + 2*size*size]
                 -fij[indices2[jj] + size * indices[ii] + size*size];
@@ -185,15 +189,6 @@ where
     }
 
     // Invert matrix.
-    println!("X = {}",
-        PfaffianState {
-            n_elec: n,
-            n_sites: state.n_sites,
-            inv_matrix: a.clone(),
-            indices: (indices.clone(), indices2.clone()),
-            pfaff: 0.0,
-        }
-    );
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
 
@@ -270,7 +265,9 @@ pub fn get_pfaffian_ratio(
 
     // Rename
     let indx_up = &previous_pstate.indices.0;
+    trace!("Up : {:?}", indx_up);
     let indx_down = &previous_pstate.indices.1;
+    trace!("Down : {:?}", indx_down);
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
 
@@ -282,14 +279,17 @@ pub fn get_pfaffian_ratio(
         match spin {
             Spin::Up => {
                 if *iup == previous_i {
+                    trace!("Pushed 0.0");
                     new_b.push(0.0);
                     continue;
                 }
+                trace!("Pushed X_[{}, {}], sector up up", new_i, iup);
                 new_b.push(
                     fij[new_i + n_sites * iup]
                     -fij[iup + n_sites * new_i]);
             }
             Spin::Down => {
+                trace!("Pushed X_[{}, {}], sector up down", new_i, iup);
                 new_b.push(
                     fij[new_i + n_sites * iup + n_sites*n_sites]
                     -fij[iup + n_sites * new_i + 2*n_sites*n_sites]);
@@ -299,6 +299,7 @@ pub fn get_pfaffian_ratio(
     for idown in indx_down.iter() {
         match spin {
             Spin::Up => {
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
                 new_b.push(
                     fij[new_i + n_sites * idown + 2*n_sites*n_sites]
                     -fij[idown + n_sites * new_i + n_sites*n_sites]);
@@ -306,8 +307,10 @@ pub fn get_pfaffian_ratio(
             Spin::Down => {
                 if *idown == previous_i {
                     new_b.push(0.0);
+                    trace!("Pushed 0.0");
                     continue;
                 }
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
                 new_b.push(
                     fij[new_i + n_sites * idown + 3*n_sites*n_sites]
                     -fij[idown + n_sites * new_i + 3*n_sites*n_sites]);
@@ -324,6 +327,11 @@ pub fn get_pfaffian_ratio(
     };
 
     // Compute the updated pfaffian.
+    trace!("Need to update col {}", col);
+    trace!("X^[-1] = {}", previous_pstate);
+    trace!("X^[-1]_[col, i] = {:?}",
+            &previous_pstate.inv_matrix[n_elec * col..n_elec + n_elec * col],
+);
     let pfaff_up;
     unsafe {
         pfaff_up = ddot(
@@ -334,6 +342,7 @@ pub fn get_pfaffian_ratio(
             1,
         )
     }
+    trace!("pfaffu_up = {}", pfaff_up);
     (pfaff_up, new_b, col)
 }
 

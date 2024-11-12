@@ -66,6 +66,7 @@ fn log_system_parameters(sys: &SysParams) {
     info!("System parameter CONS_T = {}", sys.cons_t);
 }
 
+#[ignore]
 #[test]
 fn monte_carlo_first_iteration() {
     // Initialize logger

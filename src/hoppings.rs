@@ -22,6 +22,14 @@ pub fn generate_bitmask(transfer_matrix: &[f64], size: usize) -> Vec<SpinState> 
             if i == 0 && transfer_matrix[size - 1] != 0.0 {
                 mask.state[0] ^= one << (WORD_SIZE - 1);
             }
+            // If last bitmask, we need to keep only half
+            if i == (size / 2) - 1 {
+                let mut j: usize = size / 2;
+                while j < size {
+                    mask.state[j / WORD_SIZE] &= !(one << (WORD_SIZE - j - 1 % WORD_SIZE));
+                    j += 1;
+                }
+            }
             // Index for  HOPPINGS
             mask
         });
