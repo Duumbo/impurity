@@ -1,2 +1,8 @@
 /target
 data
+figs
+scripts
+pyproject.toml
+poetry.lock
+notebooks
+analytic
