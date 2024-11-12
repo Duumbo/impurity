@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::Write;
 use assert::close;
 use impurity::monte_carlo::compute_mean_energy;
 use rand::prelude::*;
@@ -79,19 +77,19 @@ fn print_ratios(par: &VarParams) {
     let g0 = par.gi[0];
     let g1 = par.gi[1];
     let v = par.vij[1];
-    let psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
-    let psi6 = f10ud - f01du;
-    let psi9 = f01ud - f10du;
-    let psi10 = (f00ud - f00du) * <f64>::exp(g0 - v);
-    let mut statesfp = File::create("ratios_th").unwrap();
-    statesfp.write(&format!("<5|psi>/<6|psi> = {}\n", sq(psi5 / psi6)).as_bytes()).unwrap();
-    statesfp.write(&format!("<5|psi>/<9|psi> = {}\n", sq(psi5 / psi9)).as_bytes()).unwrap();
-    statesfp.write(&format!("<10|psi>/<6|psi> = {}\n", sq(psi10 / psi6)).as_bytes()).unwrap();
-    statesfp.write(&format!("<10|psi>/<9|psi> = {}\n", sq(psi10 / psi9)).as_bytes()).unwrap();
-    statesfp.write(&format!("<6|psi>/<5|psi> = {}\n", sq(psi6 / psi5)).as_bytes()).unwrap();
-    statesfp.write(&format!("<6|psi>/<10|psi> = {}\n", sq(psi6 / psi10)).as_bytes()).unwrap();
-    statesfp.write(&format!("<9|psi>/<5|psi> = {}\n", sq(psi9 / psi5)).as_bytes()).unwrap();
-    statesfp.write(&format!("<9|psi>/<10|psi> = {}\n", sq(psi9 / psi10)).as_bytes()).unwrap();
+    let _psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
+    let _psi6 = f10ud - f01du;
+    let _psi9 = f01ud - f10du;
+    let _psi10 = (f00ud - f00du) * <f64>::exp(g0 - v);
+    //let mut statesfp = File::create("ratios_th").unwrap();
+    //statesfp.write(&format!("<5|psi>/<6|psi> = {}\n", sq(psi5 / psi6)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<5|psi>/<9|psi> = {}\n", sq(psi5 / psi9)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<10|psi>/<6|psi> = {}\n", sq(psi10 / psi6)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<10|psi>/<9|psi> = {}\n", sq(psi10 / psi9)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<6|psi>/<5|psi> = {}\n", sq(psi6 / psi5)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<6|psi>/<10|psi> = {}\n", sq(psi6 / psi10)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<9|psi>/<5|psi> = {}\n", sq(psi9 / psi5)).as_bytes()).unwrap();
+    //statesfp.write(&format!("<9|psi>/<10|psi> = {}\n", sq(psi9 / psi10)).as_bytes()).unwrap();
 }
 
 fn print_ip(par: &VarParams) {
@@ -106,15 +104,15 @@ fn print_ip(par: &VarParams) {
     let g0 = par.gi[0];
     let g1 = par.gi[1];
     let v = par.vij[1];
-    let psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
-    let psi6 = f10ud - f01du;
-    let psi9 = f01ud - f10du;
-    let psi10 = (f00ud - f00du) * <f64>::exp(g0 - v);
-    let mut statesipfp = File::create("statesip").unwrap();
-    statesipfp.write(&format!("<5|psi> = {}\n", psi5).as_bytes()).unwrap();
-    statesipfp.write(&format!("<9|psi> = {}\n", psi9).as_bytes()).unwrap();
-    statesipfp.write(&format!("<6|psi> = {}\n", psi6).as_bytes()).unwrap();
-    statesipfp.write(&format!("<10|psi> = {}\n", psi10).as_bytes()).unwrap();
+    let _psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
+    let _psi6 = f10ud - f01du;
+    let _psi9 = f01ud - f10du;
+    let _psi10 = (f00ud - f00du) * <f64>::exp(g0 - v);
+    //let mut statesipfp = File::create("statesip").unwrap();
+    //statesipfp.write(&format!("<5|psi> = {}\n", psi5).as_bytes()).unwrap();
+    //statesipfp.write(&format!("<9|psi> = {}\n", psi9).as_bytes()).unwrap();
+    //statesipfp.write(&format!("<6|psi> = {}\n", psi6).as_bytes()).unwrap();
+    //statesipfp.write(&format!("<10|psi> = {}\n", psi10).as_bytes()).unwrap();
 }
 
 fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
@@ -210,8 +208,8 @@ fn analytic(par: &VarParams) -> f64 {
 
 #[test]
 fn comupte_energy_from_all_states() {
-    let mut statesfp = File::create("states").unwrap();
-    let mut energyfp = File::create("energy").unwrap();
+    //let mut statesfp = File::create("states").unwrap();
+    //let mut energyfp = File::create("energy").unwrap();
     env_logger::init();
     let mut rng = SmallRng::seed_from_u64(42u64);
     //let mut rng = thread_rng();
@@ -327,13 +325,13 @@ fn comupte_energy_from_all_states() {
     for s in accumulated_states.iter() {
         out_str.push_str(&format!("{}\n", s));
     }
-    statesfp.write(out_str.as_bytes()).unwrap();
+    //statesfp.write(out_str.as_bytes()).unwrap();
 
     println!("Correlation time: {}", cor);
     let error = <f64>::sqrt((1.0 + 2.0 * cor) / (NMCSAMP as f64));
     let mut energy_str: String = String::new();
     energy_str.push_str(&format!("{} {} {}\n", mean_energy, mc_mean_energy, error));
-    energyfp.write(energy_str.as_bytes()).unwrap();
+    //energyfp.write(energy_str.as_bytes()).unwrap();
     println!("Comparing monte-carlo energy, tol: {}", error);
     mean_energy = mean_energy / norm(&parameters);
     println!("Monte-Carlo: {}, Analytic: {}", mc_mean_energy, mean_energy);
