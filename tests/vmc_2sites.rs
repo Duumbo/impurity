@@ -22,7 +22,7 @@ const TOL_SHERMAN: f64 = 1e-12;
 const TOL_SINGULARITY: f64 = 1e-12;
 
 const NFIJ: usize = 4*SIZE*SIZE;
-const NVIJ: usize = SIZE*SIZE;
+const NVIJ: usize = SIZE*(SIZE-1)/2;
 const NGI: usize = SIZE;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
@@ -55,7 +55,7 @@ fn norm(par: &VarParams) -> f64 {
     let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
     let g0 = par.gi[0];
     let g1 = par.gi[1];
-    let v = par.vij[1];
+    let v = par.vij[0];
     let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
     let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
     let c = sq(<f64>::abs(f01uu - f10uu));
@@ -76,7 +76,7 @@ fn print_ratios(par: &VarParams) {
     let f10du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
     let g0 = par.gi[0];
     let g1 = par.gi[1];
-    let v = par.vij[1];
+    let v = par.vij[0];
     let _psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
     let _psi6 = f10ud - f01du;
     let _psi9 = f01ud - f10du;
@@ -103,7 +103,7 @@ fn print_ip(par: &VarParams) {
     let f10du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
     let g0 = par.gi[0];
     let g1 = par.gi[1];
-    let v = par.vij[1];
+    let v = par.vij[0];
     let _psi5 = (f11ud - f11du) * <f64>::exp(g1 - v);
     let _psi6 = f10ud - f01du;
     let _psi9 = f01ud - f10du;
@@ -128,7 +128,7 @@ fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
             let f11ud = par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE];
             let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
             let g1 = par.gi[1];
-            let v = par.vij[1];
+            let v = par.vij[0];
             let a = CONS_T * (f01ud + f10ud - f01du - f10du);
             let b = CONS_U * (f11ud - f11du) * <f64>::exp(g1 - v);
             println!("|5> pot: {}, kin: {}", b, a);
@@ -141,7 +141,7 @@ fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
             let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
             let g0 = par.gi[0];
             let g1 = par.gi[1];
-            let v = par.vij[1];
+            let v = par.vij[0];
             let a = CONS_T * (f00ud - f00du) * <f64>::exp(g0 - v);
             let b = CONS_T * (f11ud - f11du) * <f64>::exp(g1 - v);
             println!("|6> pot: {}, kin: {}", 0, a + b);
@@ -154,7 +154,7 @@ fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
             let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
             let g0 = par.gi[0];
             let g1 = par.gi[1];
-            let v = par.vij[1];
+            let v = par.vij[0];
             let a = CONS_T * (f00ud - f00du) * <f64>::exp(g0 - v);
             let b = CONS_T * (f11ud - f11du) * <f64>::exp(g1 - v);
             println!("|9> pot: {}, kin: {}", 0, a + b);
@@ -168,7 +168,7 @@ fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
             let f00ud = par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE];
             let f00du = par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE];
             let g0 = par.gi[0];
-            let v = par.vij[1];
+            let v = par.vij[0];
             let a = CONS_T * (f01ud + f10ud - f01du - f10du);
             let b = CONS_U * (f00ud - f00du) * <f64>::exp(g0 - v);
             println!("|10> pot: {}, kin: {}", b, a);
@@ -191,17 +191,17 @@ fn analytic(par: &VarParams) -> f64 {
         - par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
     let b = (par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[0]-par.vij[1]);
+        * <f64>::exp(par.gi[0]-par.vij[0]);
     let c = (par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[1]-par.vij[1]);
+        * <f64>::exp(par.gi[1]-par.vij[0]);
     let d = 2.0 * CONS_T * (b + c) * a;
     let e = sq(par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[0]) * CONS_U;
     let f = sq(par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[0]) * CONS_U;
     d + e + f
 }
 
@@ -239,7 +239,7 @@ fn comupte_energy_from_all_states() {
         0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0,
     ];
-    let mut vij = [0.0, 0.3, 0.3, 0.0];
+    let mut vij = [0.3];
     let mut gi = [-0.7, -0.5];
     println!("fij: {:?}", fij);
     println!("vij: {:?}", vij);

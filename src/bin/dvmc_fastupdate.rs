@@ -12,11 +12,11 @@ use impurity::monte_carlo::compute_mean_energy;
 const SEED: u64 = 1434;
 const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
-const NVIJ: usize = SIZE*SIZE;
+const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 10_000;
+const NMCSAMP: usize = 1_000;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 2;
 const NTHREADS: usize = 6;
@@ -57,7 +57,7 @@ fn norm(par: &VarParams) -> f64 {
     let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
     let g0 = par.gi[0];
     let g1 = par.gi[1];
-    let v = par.vij[1];
+    let v = par.vij[0];
     let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
     let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
     let c = sq(<f64>::abs(f01uu - f10uu));
@@ -74,17 +74,17 @@ fn mean_energy_analytic_2sites(par: &VarParams, _sys: &SysParams) -> f64 {
         - par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
     let b = (par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[0]-par.vij[1]);
+        * <f64>::exp(par.gi[0]-par.vij[0]);
     let c = (par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[1]-par.vij[1]);
+        * <f64>::exp(par.gi[1]-par.vij[0]);
     let d = 2.0 * CONS_T * (b + c) * a;
     let e = sq(par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[0]) * CONS_U;
     let f = sq(par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[0]) * CONS_U;
     (d + e + f) / norm(par)
 }
 
@@ -108,7 +108,7 @@ fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params:
         let a = format!("{:+>.05e} ", fij[i]);
         params.push_str(&a);
     }
-    for i in 0..SIZE*SIZE {
+    for i in 0..NVIJ {
         let a = format!("{:+>.05e} ", vij[i]);
         params.push_str(&a);
     }
@@ -227,10 +227,7 @@ fn main() {
     let mut all_params = vec![
          2.992823494391085859e-01,
         -8.118842052166648227e-01,
-        0.0,
         -5.126018557775564588e-01,
-        -5.126018557775564588e-01,
-        0.0,
         //0.000000000000000000e+00,
         0.0, 0.0, 0.0, 0.0,
         1.085729148576013436e-01,
@@ -361,7 +358,6 @@ fn main() {
             parameters.vij[i] -= shift;
         }
         // HARD CODE vij = vji
-        parameters.vij[1] = parameters.vij[2];
         // Slater Rescaling
         unsafe {
             let incx = 1;
