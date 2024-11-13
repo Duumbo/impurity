@@ -61,30 +61,8 @@ fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: F
     e / (pstate.pfaff * <f64>::exp(proj))
 }
 
-fn get_sign<T: BitOps>(s1: &FockState<T>, hop: &(usize, usize, Spin)) -> usize {
-    let (a, b) = if hop.0 < hop.1 {
-        (hop.1, hop.0)
-    } else {
-        (hop.0, hop.1)
-    };
-    trace!("First mask: {:08b}, second mask: {:08b}", !(<u8>::MAX >> a), <u8>::MAX >> (b + 1));
-    let mask = {
-        !(<T>::ones() >> a) & (<T>::ones() >> (b + 1))
-    };
-    let n_ones = match hop.2 {
-        Spin::Up => {
-            (s1.spin_up & mask).count_ones()
-        },
-        Spin::Down => {
-            (s1.spin_down & mask).count_ones()
-        }
-    };
-
-    n_ones as usize
-}
-
 fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
-(state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, params: &VarParams, sys: &SysParams)
+(state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams)
 {
     compute_gutzwiller_der(state, sys.size, der);
     compute_jastrow_der(state, der, sys.size);
@@ -151,7 +129,7 @@ where Standard: Distribution<T>
     let mut _lip = <f64>::ln(<f64>::abs(<f64>::exp(proj) * pstate.pfaff)) * 2.0;
     let mut n_accepted_updates: usize = 0;
     let mut energy: f64 = 0.0;
-    let mut energy_sq: f64 = 0.0;
+    let mut _energy_sq: f64 = 0.0;
     let mut proj_copy_persistent = proj;
     let mut ratio_prod = 1.0;
     let mut sample_counter: usize = 0;
@@ -204,7 +182,7 @@ where Standard: Distribution<T>
     // We need to reset the counter that the warmup increased.
     derivatives.mu = 0;
     // Compute the derivative for the first element in the markov chain
-    compute_derivative_operator(state, &pstate, derivatives, params, sys);
+    compute_derivative_operator(state, &pstate, derivatives, sys);
     for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
@@ -239,7 +217,7 @@ where Standard: Distribution<T>
             // Compute the derivative operator
             if sample_counter >= sys.mcsample_interval {
                 derivatives.mu += 1;
-                compute_derivative_operator(state, &pstate, derivatives, params, sys);
+                compute_derivative_operator(state, &pstate, derivatives, sys);
             }
         }
         if sample_counter >= sys.mcsample_interval {
@@ -248,7 +226,7 @@ where Standard: Distribution<T>
             derivatives.visited[derivatives.mu as usize] += 1;
             let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
             energy += state_energy;
-            energy_sq += state_energy*state_energy;
+            _energy_sq += state_energy*state_energy;
             // Energy error estimation
             let accumulation_level = <f32>::log2((mc_it + 1) as f32) as usize;
             for i in 0..accumulation_level {

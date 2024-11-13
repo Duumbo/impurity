@@ -1,5 +1,3 @@
-use std::ptr::addr_of;
-use std::slice::from_raw_parts as slice;
 use log::info;
 
 use impurity::{FockState, RandomStateGeneration, VarParams, SysParams, generate_bitmask, DerivativeOperator};
@@ -31,12 +29,14 @@ const NMCWARMUP: usize = 1000;
 const CLEAN_UPDATE_FREQUENCY: usize = 8;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-15;
 const TOLERANCE_SINGULARITY: f64 = 1e-15;
-const MONTE_CARLO_CONVERGENCE_TOLERANCE: f64 = 1e-1;
+const _MONTE_CARLO_CONVERGENCE_TOLERANCE: f64 = 1e-1;
 
+#[allow(dead_code)]
 fn sq(a: f64) -> f64 {
     a * a
 }
 
+#[allow(dead_code)]
 fn mean_energy_analytic_2sites(params: &VarParams, _sys: &SysParams) -> f64 {
     let f00 = params.fij[0 + SIZE*SIZE] - params.fij[0 + 2*SIZE*SIZE];
     let f01 = params.fij[1 + SIZE*SIZE] - params.fij[2 + 2*SIZE*SIZE];

@@ -1,11 +1,11 @@
-use blas::{daxpy, dcopy, ddot, dnrm2, dscal, idamax};
-use log::{debug, error, info};
+use blas::{daxpy, dcopy, dnrm2, dscal, idamax};
+use log::{debug, info};
 use rand_mt::Mt64;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
-use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
+use impurity::optimisation::conjugate_gradiant;
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
@@ -19,7 +19,7 @@ const NELEC: usize = SIZE;
 const NMCSAMP: usize = 10_000;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 2;
-const NTHREADS: usize = 6;
+const _NTHREADS: usize = 6;
 const CLEAN_UPDATE_FREQUENCY: usize = 2;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
