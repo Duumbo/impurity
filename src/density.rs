@@ -100,9 +100,6 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     let spin = hopping.2;
     let n_sites = new_state.n_sites;
 
-    // TMP
-    let proj = previous_proj.clone();
-
     let (pfaffian_ratio, b_vec, col) = {
         let fij = &params.fij;
         let vij = &params.vij;
