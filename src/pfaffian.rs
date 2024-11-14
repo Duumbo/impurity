@@ -60,7 +60,7 @@ impl fmt::Display for PfaffianState {
 /// * __`a`__ - The matrix $A$ of the variationnal parameters.
 /// * __`n`__ - The dimension of the matrix, this correspond to the number of
 /// electrons.
-fn invert_matrix(a: &mut [f64], n: i32) {
+fn invert_matrix(a: &mut [f64], n: i32) -> f64 {
     // Info output of lapack
     let mut info1: i32 = 0;
     let mut info2: i32 = 0;
@@ -72,8 +72,15 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     let mut ipiv: Vec<i32> = Vec::with_capacity(n as usize);
 
     // Inverse matrix `a` inplace using L*U decomposition.
+    let mut determinant = 1.0;
     unsafe {
         dgetrf(n, n, a, n, &mut ipiv, &mut info1);
+        for i in 0..n as usize {
+            determinant *= a[i + i*n as usize];
+            if ipiv[i] != i as i32 {
+                determinant *= -1.0;
+            }
+        }
         dgetri(n, a, n, &ipiv, &mut work, n_entry, &mut info2);
     }
 
@@ -88,6 +95,7 @@ fn invert_matrix(a: &mut [f64], n: i32) {
         );
         panic!("Matrix invertion fail.");
     }
+    determinant
 }
 
 #[allow(dead_code)]
@@ -113,14 +121,80 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
     b
 }
 
+pub fn construct_pair_matrix_from_state<T>(fij: &[f64], state: FockState<T>) -> PfaffianState
+where
+    T: BitOps
+{
+    let n = state.spin_up.count_ones() as usize + state.spin_down.count_ones() as usize;
+    let mut a: Vec<f64> = vec![0.0; n * n / 2];
+
+    let mut indices: Vec<usize> = Vec::with_capacity(n);
+    let mut indices2: Vec<usize> = Vec::with_capacity(n);
+    let (mut spin_up, mut spin_down) = (state.spin_up, state.spin_down);
+    let (mut i, mut j): (usize, usize) = (
+        spin_up.leading_zeros() as usize,
+        spin_down.leading_zeros() as usize,
+    );
+    while i < state.n_sites {
+        indices.push(i);
+        spin_up.set(i);
+        i = spin_up.leading_zeros() as usize;
+    }
+    while j < state.n_sites {
+        indices2.push(j);
+        spin_down.set(j);
+        j = spin_down.leading_zeros() as usize;
+    }
+    let off = indices.len();
+    let size = state.n_sites;
+
+    // X_{ij}=F_{ij}^{\sigma_i,\sigma_j} - F_{ji}^{\sigma_j,\sigma_i}, tahara2008
+    // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
+    // But this is the special case for the pair wave-function, then fij only
+    // contains relevant parameters. fij len() is SIZE*SIZE.
+    for jj in 0..indices2.len() {
+        for ii in 0..indices.len() {
+            trace!("X_[{}, {}] = f_[{}, {}]",
+                jj + off, ii, indices[ii], indices2[jj]);
+            a[ii * n + (jj + off)] =
+                fij[indices2[jj] + size * indices[ii]];
+        }
+    }
+
+    // Invert matrix.
+    let det = invert_matrix(&mut a, n as i32);
+    let pfaffian_value = {
+        let u = n * (n - 1) / 2;
+        if u % 2 == 0 {
+            det
+        } else {
+            - det
+        }
+    };
+
+    trace!("Computed log abs pfaffian {} for state {}", <f64>::ln(<f64>::abs(pfaffian_value)), state);
+    trace!("Computed pfaffian {} for state {}", pfaffian_value, state);
+
+    PfaffianState {
+        n_elec: n,
+        n_sites: state.n_sites,
+        inv_matrix: a,
+        indices: (indices, indices2),
+        pfaff: pfaffian_value,
+    }
+}
+
 /// Constructs pfaffian matrix from state.
 /// # Fields
 /// * __`fij`__ - All the variationnal parameters.
 /// * __`state`__ - The state of the system.
-pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>) -> PfaffianState
+pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>, sys: &SysParams) -> PfaffianState
 where
     T: BitOps + std::fmt::Display,
 {
+    if sys.pair_wavefunction {
+        return construct_pair_matrix_from_state(fij, state);
+    }
     // Fij upup, updown, downup, downdown
     let n = state.spin_up.count_ones() as usize + state.spin_down.count_ones() as usize;
     let mut a: Vec<f64> = vec![0.0; n * n];
