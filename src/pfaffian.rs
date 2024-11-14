@@ -155,8 +155,8 @@ where
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
             trace!("X_[{}, {}] = f_[{}, {}]",
-                jj + off, ii, indices[ii], indices2[jj]);
-            a[ii * n + (jj + off)] =
+                jj, ii, indices[ii], indices2[jj]);
+            a[ii * n + jj] =
                 fij[indices2[jj] + size * indices[ii]];
         }
     }
