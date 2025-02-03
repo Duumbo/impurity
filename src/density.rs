@@ -5,17 +5,18 @@ use pyo3::{pyfunction, PyResult};
 use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
 use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
 use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
-use crate::{BitOps, FockState, Spin, SpinState, VarParams};
+use crate::{BitOps, FockState, Spin, SpinState, VarParams, SysParams};
 
 pub fn compute_internal_product<T>(
     state: FockState<T>,
     params: &VarParams,
+    sys: &SysParams,
 ) -> f64
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
 {
     let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
-            construct_matrix_a_from_state(params.fij, state),
+            construct_matrix_a_from_state(params.fij, state, sys),
             compute_jastrow_exp(state, params.vij, state.n_sites),
             compute_gutzwiller_exp(state, params.gi, state.n_sites)
         )
@@ -31,12 +32,13 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
 pub fn compute_internal_product_parts<T>(
     state: FockState<T>,
     params: &VarParams,
+    sys: &SysParams,
 ) -> (PfaffianState, f64)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
 {
     let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
-            construct_matrix_a_from_state(params.fij, state),
+            construct_matrix_a_from_state(params.fij, state, sys),
             compute_jastrow_exp(state, params.vij, state.n_sites),
             compute_gutzwiller_exp(state, params.gi, state.n_sites)
         )
@@ -52,6 +54,7 @@ pub fn fast_internal_product_no_otilde<T>(
     hopping: &(usize, usize, Spin),
     previous_proj: &mut f64,
     params: &VarParams,
+    sys: &SysParams,
 ) -> (f64, Vec<f64>, usize)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
@@ -75,7 +78,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij, sys)
     };
 
     // Combine to get the internal product.
@@ -91,6 +94,7 @@ pub fn fast_internal_product<T>(
     hopping: &(usize, usize, Spin),
     previous_proj: &mut f64,
     params: &VarParams,
+    sys: &SysParams,
 ) -> (f64, Vec<f64>, usize)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
@@ -114,7 +118,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij, sys)
     };
 
     // Combine to get the internal product.

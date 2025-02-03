@@ -49,7 +49,7 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
 {
     let state2 = state.generate_hopping(rng, sys.size as u32, hop, sys);
     let (ratio_ip, updated_column, col_idx) = {
-        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params)
+        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params, sys)
     };
     (ratio_ip, state2, updated_column, col_idx)
 }
@@ -91,11 +91,11 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
     if *n < sys.clean_update_frequency {
         *state = *state2;
         *proj = *proj_copy;
-        update_pstate(pstate, *hop, col, colidx);
+        update_pstate(pstate, *hop, col, colidx, sys);
         *ratio_prod *= ratio;
     } else {
         let tmp_pfaff = pstate.pfaff;
-        (*pstate, *proj) = compute_internal_product_parts(*state2, params);
+        (*pstate, *proj) = compute_internal_product_parts(*state2, params, sys);
         let inverse_proj = <f64>::exp(*proj_copy_persistent - *proj);
         let err = <f64>::abs(<f64>::abs(tmp_pfaff * *ratio * *ratio_prod * inverse_proj) - <f64>::abs(pstate.pfaff));
         if pstate.pfaff*pstate.pfaff < sys.tolerance_singularity {
@@ -124,7 +124,7 @@ where Standard: Distribution<T>
     }
     let mut state = initial_state;
     let mut accumulated_states: Vec<FockState<T>> = Vec::new();
-    let (mut pstate, mut proj) = compute_internal_product_parts(state, params);
+    let (mut pstate, mut proj) = compute_internal_product_parts(state, params, sys);
     let mut hop: (usize, usize, Spin) = (0, 0, Spin::Up);
     let mut _lip = <f64>::ln(<f64>::abs(<f64>::exp(proj) * pstate.pfaff)) * 2.0;
     let mut n_accepted_updates: usize = 0;

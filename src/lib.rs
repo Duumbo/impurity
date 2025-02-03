@@ -78,10 +78,10 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
         let mut expval = "<O> = ".to_owned();
         let mut ho = "<HO> = ".to_owned();
         let mut o_tilde = "O = ".to_owned();
-        for mu in 0..(self.mu + 1) as usize {
-            expval.push_str(&format!("{:>width$.04e} ", self.expval_o[mu]));
-            ho.push_str(&format!("{:>width$.04e} ", self.ho[mu]));
-            for n in 0..self.n as usize {
+        for n in 0..self.n as usize {
+            expval.push_str(&format!("{:>width$.04e} ", self.expval_o[n]));
+            ho.push_str(&format!("{:>width$.04e} ", self.ho[n]));
+            for mu in 0..(self.mu + 1) as usize {
                 o_tilde.push_str(&format!("{:>width$.04e}", self.o_tilde[n + n * mu]));
             }
             o_tilde.push_str("\n");

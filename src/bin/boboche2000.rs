@@ -86,6 +86,7 @@ fn main() {
         nmcsample: NMCSAMP,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERANCE_SINGULARITY,
+        pair_wavefunction: false,
     };
     log_system_parameters(&sys);
 

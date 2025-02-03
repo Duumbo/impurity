@@ -86,9 +86,17 @@ where
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
-                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * der.mu) as usize] = -0.5;
+                if k > i {
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -0.5;
+                } else {
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -0.5;
+                }
             } else {
-                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * der.mu) as usize] = 0.5;
+                if k > i {
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 0.5;
+                } else {
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 0.5;
+                }
             }
         }
         i = regular_nor.leading_zeros() as usize;

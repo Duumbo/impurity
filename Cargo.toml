@@ -33,6 +33,8 @@ rayon = "1.10.0"
 rand_mt = {version = "4.2.2", features = ["rand_core"]}
 # Progress bar
 indicatif = "0.17.8"
+# Colored terminal text
+colored = "3.0.0"
 
 [dependencies.rand]
 version = "0.8.5"

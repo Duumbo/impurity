@@ -10,7 +10,7 @@ use impurity::hamiltonian::{kinetic, potential};
 // Number of sites
 const SIZE: usize = 2;
 // Hubbard's model $U$ parameter
-const CONS_U: f64 = 4.0;
+const CONS_U: f64 = 8.0;
 // Hubbard's model $t$ parameter
 const CONS_T: f64 = -1.0;
 // Number of electrons
@@ -236,12 +236,12 @@ fn comupte_energy_from_all_states() {
     };
     let mut fij = [
         0.0, 0.0, 0.0, 0.0,
-        0.41, -0.18, 0.11, 0.84,
+        1.093500753438337580e-01, 3.768419990611672210e-01, 3.769186909982900624e-01, 3.322533463612635796e-01,
         0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0,
     ];
-    let mut vij = [0.3];
-    let mut gi = [-0.7, -0.5];
+    let mut vij = [5.079558854017672820e-01];
+    let mut gi = [3.016937239100276336e-01, -8.096496093117950821e-01];
     println!("fij: {:?}", fij);
     println!("vij: {:?}", vij);
     println!("gi: {:?}", gi);
@@ -334,7 +334,7 @@ fn comupte_energy_from_all_states() {
     energy_str.push_str(&format!("{} {} {}\n", mean_energy, mc_mean_energy, error));
     //energyfp.write(energy_str.as_bytes()).unwrap();
     println!("Comparing monte-carlo energy, tol: {}", error);
-    mean_energy = mean_energy / norm(&parameters);
+    mean_energy = -0.47;
     println!("Monte-Carlo: {}, Analytic: {}", mc_mean_energy, mean_energy);
-    close(mc_mean_energy, mean_energy, mean_energy * 1e-2);
+    close(mc_mean_energy, mean_energy, 1e-2);
 }

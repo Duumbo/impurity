@@ -1,34 +1,37 @@
 use blas::{daxpy, dcopy, dnrm2, dscal, idamax};
 use log::{debug, info};
 use rand_mt::Mt64;
+use rand::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
-use impurity::optimisation::conjugate_gradiant;
+use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
-const SEED: u64 = 1434;
+const SEED: u64 = 14345;
 const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1_000;
+const NMCSAMP: usize = 40_000;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 2;
 const _NTHREADS: usize = 6;
-const CLEAN_UPDATE_FREQUENCY: usize = 2;
+const CLEAN_UPDATE_FREQUENCY: usize = 20;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
 const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
-const EPSILON_SPREAD: f64 = 0.0;
-const OPTIMISATION_TIME_STEP: f64 = 1e-2;
-const NOPTITER: usize = 1_000;
+const EPSILON_SPREAD: f64 = 0.2;
+const OPTIMISATION_TIME_STEP: f64 = 1e-1;
+const NOPTITER: usize = 10_000;
+const KMAX: usize = NMCSAMP;
+const PARAMTHRESHOLD: f64 = 0.2;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0,
@@ -136,6 +139,7 @@ fn zero_out_derivatives(der: &mut DerivativeOperator) {
 
 fn main() {
     let mut fp = File::create("params").unwrap();
+    writeln!(fp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
     let mut statesfp = File::create("states").unwrap();
     let mut save: bool = true;
     // Initialize logger
@@ -157,11 +161,16 @@ fn main() {
         nmcwarmup: NMCWARMUP,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
-        tolerance_singularity: TOLERENCE_SINGULARITY
+        tolerance_singularity: TOLERENCE_SINGULARITY,
+        pair_wavefunction: false,
     };
 
     let mut rng = Mt64::new(SEED);
     //let parameters = generate_random_params(&mut rng);
+    //let mut all_params = Vec::with_capacity(NGI + NVIJ + NFIJ);
+    //for i in 0..(NGI + NVIJ + NFIJ) {
+    //    all_params.push(rng.gen());
+    //}
     //let mut all_params = vec![
     //    -1.0, -1.0, -1.0, -1.0,
     //    0.0, 2.0, 2.0, 2.0,
@@ -315,8 +324,8 @@ fn main() {
             daxpy(derivative.n, -mean_energy, derivative.expval_o, incx, derivative.ho, incy);
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }
-        //spread_eigenvalues(&mut derivative);
-        conjugate_gradiant(&derivative, &mut b, &mut x0, EPSILON_CG, 4, NPARAMS as i32);
+        spread_eigenvalues(&mut derivative);
+        conjugate_gradiant(&derivative, &mut b, &mut x0, EPSILON_CG, KMAX, NPARAMS as i32, PARAMTHRESHOLD);
         info!("Need to update parameters with: {:?}", x0);
         unsafe {
             let incx = 1;
