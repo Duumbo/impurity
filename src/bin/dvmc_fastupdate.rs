@@ -298,7 +298,7 @@ fn main() {
     .progress_chars("##-"));
 
     for opt_iter in 0..NOPTITER {
-        let (mean_energy, accumulated_states, correlation_time) = {
+        let (mean_energy, accumulated_states, correlation_time, _) = {
             compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
         };
         if save {

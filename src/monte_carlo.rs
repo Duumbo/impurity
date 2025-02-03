@@ -215,11 +215,10 @@ fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeO
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
-(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64)
+(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64, f64)
 where Standard: Distribution<T>
 {
     let mut ratiofp = File::create("ratios").unwrap();
-    let mut errorsfp = File::create("errors").unwrap();
     if derivatives.mu != -1 {
         warn!("The derivative operator current row was mu = {} on entry, is it reinitialized?", derivatives.mu);
     }
@@ -317,5 +316,5 @@ where Standard: Distribution<T>
             );
     }
     let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
-    (energy, accumulated_states, error[error_estimation_level - 1])//correlation_time)
+    (energy, accumulated_states, error[error_estimation_level - 1], correlation_time)
 }

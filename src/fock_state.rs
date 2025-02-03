@@ -560,7 +560,10 @@ pub trait RandomStateGeneration {
     fn generate_exchange<R: Rng + ?Sized>(self: &Self, rng: &mut R, out_idx: &mut (usize, usize)) -> Self;
 }
 
-impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard: Distribution<T> {
+impl<T> RandomStateGeneration for FockState<T>
+where T: BitOps,
+    Standard: Distribution<T>
+{
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {
         let mut state = FockState{spin_up: <T>::zeros(), spin_down: <T>::zeros(), n_sites: max_size};
         let mut i = 0;
@@ -586,28 +589,58 @@ impl<T: BitOps + From<u8>> RandomStateGeneration for FockState<T> where Standard
 
     fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> FockState<T> {
         // This is cheap, don't sweat it
-        let all_hops = self.generate_all_hoppings(&sys.hopping_bitmask);
+        //let all_hops = self.generate_all_hoppings(&sys.hopping_bitmask);
 
-        let rand_index = rng.gen_range(0..all_hops.len());
-        let hop = all_hops[rand_index];
+        let spin = if rng.gen::<usize>() % 2 == 0 {
+            Spin::Up
+        } else {
+            Spin::Down
+        };
+        let mut rand_from_idx;
+        let mut rand_to_idx;
+        match spin {
+            Spin::Up => {
+                // Choose spin from
+                rand_from_idx = (rng.gen::<u32>() % max_size) as usize;
+                while !self.spin_up.check(rand_from_idx) {
+                    rand_from_idx = (rng.gen::<u32>() % max_size) as usize;
+                }
+                rand_to_idx = (rng.gen::<u32>() % max_size) as usize;
+                while self.spin_up.check(rand_to_idx) {
+                    rand_to_idx = (rng.gen::<u32>() % max_size) as usize;
+                }
+            },
+            Spin::Down => {
+                // Choose spin from
+                rand_from_idx = (rng.gen::<u32>() % max_size) as usize;
+                while !self.spin_down.check(rand_from_idx) {
+                    rand_from_idx = (rng.gen::<u32>() % max_size) as usize;
+                }
+                rand_to_idx = (rng.gen::<u32>() % max_size) as usize;
+                while self.spin_down.check(rand_to_idx) {
+                    rand_to_idx = (rng.gen::<u32>() % max_size) as usize;
+                }
+            }
+        }
+
 
         let mut sup = self.spin_up;
         let mut sdown = self.spin_down;
 
-        match hop.2 {
+        match spin {
             Spin::Up => {
                 // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
-                sup.set(hop.0);
-                sup.set(hop.1);
+                sup.set(rand_from_idx);
+                sup.set(rand_to_idx);
             },
             Spin::Down => {
-                sdown.set(hop.0);
-                sdown.set(hop.1);
+                sdown.set(rand_from_idx);
+                sdown.set(rand_to_idx);
             }
         }
-        out_idx.0 = hop.0;
-        out_idx.1 = hop.1;
-        out_idx.2 = hop.2;
+        out_idx.0 = rand_from_idx;
+        out_idx.1 = rand_to_idx;
+        out_idx.2 = spin;
 
         FockState{
             n_sites: max_size as usize,

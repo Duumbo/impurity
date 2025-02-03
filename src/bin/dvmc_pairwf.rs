@@ -1,4 +1,4 @@
-use blas::{daxpy, dcopy, dnrm2, dscal, idamax, ddot};
+use blas::{daxpy, dcopy, dnrm2, dscal, idamax};
 use log::{debug, error, info};
 use rand_mt::Mt64;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -16,7 +16,7 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1_000;
+const NMCSAMP: usize = 10_000;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 2;
 const _NTHREADS: usize = 6;
@@ -92,7 +92,7 @@ fn mean_energy_analytic_2sites(par: &VarParams, _sys: &SysParams) -> f64 {
     (d + e + f) / norm(par)
 }
 
-fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params: &VarParams, sys: &SysParams, dpar: &[f64]) {
+fn log_system_parameters(e: f64, ae: f64, deltae: f64, corr_time: f64, fp: &mut File, params: &VarParams, sys: &SysParams, dpar: &[f64]) {
     let fij = &params.fij;
     let vij = &params.vij;
     let gi = &params.gi;
@@ -107,6 +107,7 @@ fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params:
     debug!("\n{}", params);
     let mut params = format!("{:+>.05e}  ", e).to_owned();
     params.push_str(&format!("{:+>.05e}  ", ae).to_owned());
+    params.push_str(&format!("{:+>.05e}  ", deltae).to_owned());
     params.push_str(&format!("{:+>.05e}  ", corr_time).to_owned());
     for i in 0..SIZE {
         let a = format!("{:+>.05e} ", gi[i]);
@@ -257,7 +258,7 @@ fn main() {
     .progress_chars("##-"));
 
     for opt_iter in 0..NOPTITER {
-        let (mean_energy, accumulated_states, correlation_time) = {
+        let (mean_energy, accumulated_states, deltae, correlation_time) = {
             compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
         };
         if save {
@@ -459,7 +460,7 @@ fn main() {
             );
         }
         let analytic_energy = mean_energy_analytic_2sites(&parameters, &system_params);
-        log_system_parameters(mean_energy, analytic_energy, correlation_time, &mut fp, &parameters, &system_params, &delta_alpha);
+        log_system_parameters(mean_energy, analytic_energy, deltae, correlation_time, &mut fp, &parameters, &system_params, &delta_alpha);
         zero_out_derivatives(&mut derivative);
         let opt_delta = unsafe {
             let incx = 1;

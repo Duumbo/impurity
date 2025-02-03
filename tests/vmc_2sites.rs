@@ -321,7 +321,7 @@ fn comupte_energy_from_all_states() {
         tmp
     };
 
-    let (mc_mean_energy, accumulated_states, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
+    let (mc_mean_energy, accumulated_states, _, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
     let mut out_str: String = String::new();
     for s in accumulated_states.iter() {
         out_str.push_str(&format!("{}\n", s));
