@@ -115,6 +115,45 @@ fn print_ip(par: &VarParams) {
     //statesipfp.write(&format!("<10|psi> = {}\n", psi10).as_bytes()).unwrap();
 }
 
+fn individual_state(state: &State, par: &VarParams) -> f64 {
+    match state {
+        State::F3 => {
+            let f01dd = par.fij[0 + 1 * SIZE + 3 * SIZE * SIZE];
+            let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
+            f01dd - f10dd
+        },
+        State::F5 => {
+            let f11ud = par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE];
+            let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
+            let g1 = par.gi[1];
+            let v = par.vij[0];
+            (f11ud - f11du) * <f64>::exp(g1 - v)
+        },
+        State::F6 => {
+            let f10ud = par.fij[1 + 0 * SIZE + 1 * SIZE * SIZE];
+            let f01du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
+            f10ud - f01du
+        },
+        State::F9 => {
+            let f01ud = par.fij[0 + 1 * SIZE + 1 * SIZE * SIZE];
+            let f10du = par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
+            f01ud - f10du
+        },
+        State::F10 => {
+            let f00ud = par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE];
+            let f00du = par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE];
+            let g0 = par.gi[0];
+            let v = par.vij[0];
+            (f00ud - f00du) * <f64>::exp(g0 - v)
+        },
+        State::F12 => {
+            let f01uu = par.fij[0 + 1 * SIZE + 0 * SIZE * SIZE];
+            let f10uu = par.fij[1 + 0 * SIZE + 0 * SIZE * SIZE];
+            f01uu - f10uu
+        },
+    }
+}
+
 fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
     match state {
         State::F3 => {
@@ -203,6 +242,93 @@ fn analytic(par: &VarParams) -> f64 {
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
         * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[0]) * CONS_U;
     d + e + f
+}
+
+fn analytic_derivatives_expval(par: &VarParams) -> Vec<f64> {
+    let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
+    out_der[0] = sq(individual_state(&State::F10, par));
+    out_der[1] = sq(individual_state(&State::F5, par));
+    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
+    //out_der[3] =
+    //out_der[4] =
+    //out_der[5] =
+    //out_der[6] =
+    out_der[7] = {
+        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
+            * sq(individual_state(&State::F10, par))
+    };
+    out_der[8] = individual_state(&State::F6, par);
+    out_der[9] = individual_state(&State::F9, par);
+    out_der[10] = {
+        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
+            * sq(individual_state(&State::F5, par))
+    };
+    out_der[11] = - {
+        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
+            * sq(individual_state(&State::F10, par))
+    };
+    out_der[12] = - individual_state(&State::F9, par);
+    out_der[13] = - individual_state(&State::F6, par);
+    out_der[14] = - {
+        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
+            * sq(individual_state(&State::F5, par))
+    };
+    //out_der[3] =
+    //out_der[4] =
+    //out_der[5] =
+    //out_der[6] =
+
+    out_der
+}
+
+fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
+    let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
+    out_der[0] = individual_state(&State::F10, par)
+        * energy_individual_state(&State::F10, par);
+    out_der[1] = individual_state(&State::F5, par)
+        * energy_individual_state(&State::F5, par);
+    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
+    //out_der[3] =
+    //out_der[4] =
+    //out_der[5] =
+    //out_der[6] =
+    out_der[7] = {
+        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
+            * individual_state(&State::F10, par)
+            * energy_individual_state(&State::F10, par)
+    };
+    out_der[8] = energy_individual_state(&State::F6, par);
+    out_der[9] = energy_individual_state(&State::F9, par);
+    out_der[10] = {
+        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
+            * individual_state(&State::F5, par)
+            * energy_individual_state(&State::F5, par)
+    };
+    out_der[11] = - {
+        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
+            * individual_state(&State::F10, par)
+                * energy_individual_state(&State::F10, par)
+    };
+    out_der[12] = - energy_individual_state(&State::F9, par);
+    out_der[13] = - energy_individual_state(&State::F6, par);
+    out_der[14] = - {
+        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
+            * individual_state(&State::F5, par)
+            * energy_individual_state(&State::F5, par)
+    };
+    //out_der[3] =
+    //out_der[4] =
+    //out_der[5] =
+    //out_der[6] =
+
+    out_der
+}
+
+fn print_der(der1: &[f64], der2: &[f64], npar: usize) {
+    println!("Monte-Carlo    Analytic       Ratio");
+    for i in 0..npar {
+        println!("{:11.4e}  {:10.4e}  {:10.4e}", der1[i], der2[i], der2[i] / der1[i]);
+    }
 }
 
 
@@ -321,15 +447,18 @@ fn comupte_energy_from_all_states() {
         tmp
     };
 
-    let (mc_mean_energy, accumulated_states, _, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
+    let (mc_mean_energy, accumulated_states, error, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
     let mut out_str: String = String::new();
     for s in accumulated_states.iter() {
         out_str.push_str(&format!("{}\n", s));
     }
     //statesfp.write(out_str.as_bytes()).unwrap();
+    for i in 0..sys.ngi + sys.nfij + sys.nvij {
+        der.expval_o[i] *= 1.0 / sys.nmcsample as f64;
+        der.ho[i] *= 1.0 / sys.nmcsample as f64;
+    }
 
     println!("Correlation time: {}", cor);
-    let error = <f64>::sqrt((1.0 + 2.0 * cor) / (NMCSAMP as f64));
     let mut energy_str: String = String::new();
     energy_str.push_str(&format!("{} {} {}\n", mean_energy, mc_mean_energy, error));
     //energyfp.write(energy_str.as_bytes()).unwrap();
@@ -337,4 +466,21 @@ fn comupte_energy_from_all_states() {
     mean_energy = mean_energy / norm(&parameters);
     println!("Monte-Carlo: {}, Analytic: {}", mc_mean_energy, mean_energy);
     close(mc_mean_energy, mean_energy, mean_energy * 1e-2);
+
+    // Test derivatives
+    let exp_val = analytic_derivatives_expval(&parameters);
+    print_der(der.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
+    let psi = norm(&parameters);
+    println!("Norm: {:10.4e}", psi);
+    for i in 0..sys.ngi+sys.nvij+sys.nfij {
+        close(der.expval_o[i] * psi, exp_val[i], 1e-2);
+    }
+
+    let exp_val_ho = analytic_ho_expval(&parameters);
+    print_der(der.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
+    let psi = norm(&parameters);
+    println!("Norm: {:10.4e}", psi);
+    for i in 0..sys.ngi+sys.nvij+sys.nfij {
+        close(der.ho[i] * psi, exp_val_ho[i], 2e-2);
+    }
 }
