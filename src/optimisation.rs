@@ -149,12 +149,12 @@ fn prefilter_overlap_matrix(a: &DerivativeOperator, ignore_idx: &mut [bool], dim
         }
     }
     let threshold = diag_threshold * max_elem;
-    for k in 0..dim as usize {
-        if diag_elem[k] < threshold {
-            skip_param_count += 1;
-            ignore_idx[k] = true;
-        }
-    }
+    //for k in 0..dim as usize {
+    //    if diag_elem[k] < threshold {
+    //        skip_param_count += 1;
+    //        ignore_idx[k] = true;
+    //    }
+    //}
     dim as usize - skip_param_count
 
 }
@@ -184,7 +184,7 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
     // Computes Ap
     let incx = 1;
     let alpha = 1.0/nsamp;
-    let beta = -1.0;
+    let beta = -(1.0);
     let mut otilde_w_visited = vec![0.0; (dim * mu) as usize];
     for i in 0..mu as usize {
         for j in 0..dim as usize {
@@ -346,10 +346,13 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         }
     }
     let threshold = thresh * max;
+    let mut i = 0;
     for e in eigenvalues.iter_mut() {
         if *e < threshold {
             *e = 0.0;
+            ignore[i] = true;
         }
+        i+=1;
     }
     //Invert matrix
     for e in eigenvalues.iter_mut() {

@@ -33,6 +33,7 @@ use crate::hamiltonian::{kinetic, potential};
 //    (ratio_ip, state2, updated_column, col_idx)
 //}
 
+#[inline(always)]
 fn propose_hopping
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
@@ -54,6 +55,7 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
     (ratio_ip, state2, updated_column, col_idx)
 }
 
+#[inline(always)]
 fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
     let kin = kinetic(state, pstate, proj, params, sys);
     let e = kin + potential(state, proj, pstate, sys);
@@ -61,6 +63,7 @@ fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: F
     e / (pstate.pfaff * <f64>::exp(proj))
 }
 
+#[inline(always)]
 fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
 (state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams)
 {
@@ -164,6 +167,7 @@ where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display,
 
 }
 
+#[inline(always)]
 fn energy_error_estimation(
     state_energy: f64,
     previous_energies: &mut [f64],
@@ -188,6 +192,7 @@ fn energy_error_estimation(
     }
 }
 
+#[inline(always)]
 fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeOperator) {
     // Accumulate Energy
     *energy += state_energy;
@@ -209,6 +214,17 @@ fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeO
     // Accumulate <O>
     for i in 0 .. der.n as usize {
         der.expval_o[i] += der.o_tilde[i + last_line_begin];
+    }
+}
+
+#[inline(always)]
+fn normalize(energy: &mut f64, energy_bootstraped: &mut f64, expval_o: &mut [f64], ho: &mut [f64], nsample: f64, nbootstrap: f64, nparams: usize) {
+    *energy *= 1.0 / nsample;
+    *energy_bootstraped *= 1.0 / nsample;
+    *energy_bootstraped *= 1.0 / nbootstrap;
+    for i in 0..nparams {
+        expval_o[i] *= 1.0 / nsample;
+        ho[i] *= 1.0 / nsample;
     }
 }
 
@@ -237,11 +253,12 @@ where Standard: Distribution<T>
         error!("Not enough monte-carlo sample for an accurate error estimation. NMCSAMPLE = {}", sys.nmcsample);
         panic!("NMCSAMPLE is less than 64.");
     }
-    let error_estimation_level = <f64>::log2(sys.nmcsample as f64) as usize - 6;
+    let error_estimation_level = <f64>::log2(sys.nmcsample as f64) as usize - 5;
     let mut energy_sums = vec![0.0; error_estimation_level];
     let mut energy_quad_sums = vec![0.0; error_estimation_level];
     let mut previous_energies = vec![0.0; error_estimation_level + 1];
     let mut n_values = vec![0; error_estimation_level];
+    let mut energy_bootstraped = 0.0;
 
     info!("Starting the warmup phase.");
     warmup(rng, &mut state, &mut hop, &mut proj, &mut proj_copy_persistent, &mut ratio_prod, &mut
@@ -299,22 +316,26 @@ where Standard: Distribution<T>
             energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
                 energy_quad_sums, &mut n_values, mc_it, error_estimation_level);
             sample_counter = 0;
+            if mc_it >= (sys.nmcsample - sys.nbootstrap) * sys.mcsample_interval {
+                energy_bootstraped += energy;
+            }
         }
         sample_counter += 1;
 
     }
     derivatives.mu += 1;
     info!("Final Energy: {:.2}", energy);
-    energy = energy / sys.nmcsample as f64;
+    normalize(&mut energy, &mut energy_bootstraped, &mut derivatives.expval_o, &mut derivatives.ho,
+        sys.nmcsample as f64, sys.nbootstrap as f64, sys.ngi + sys.nvij + sys.nfij);
     info!("Final Energy normalized: {:.2}", energy);
     // Error estimation
     let mut error = vec![0.0; error_estimation_level];
     for i in 0..error_estimation_level {
         error[i] = <f64>::sqrt(
-            (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / (n_values[i] as f64)) /
+            (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / ((n_values[i]*n_values[i]) as f64)) /
             (n_values[i] * (n_values[i] - 1)) as f64
             );
     }
     let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
-    (energy, accumulated_states, error[error_estimation_level - 1], correlation_time)
+    (energy_bootstraped, accumulated_states, error[error_estimation_level - 1], correlation_time)
 }

@@ -79,6 +79,7 @@ fn main() {
         nvij: NVIJ,
         ngi: NGI,
         mcsample_interval: 1,
+        nbootstrap: 1,
         transfert_matrix: &HOPPINGS,
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,

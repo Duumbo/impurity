@@ -1,7 +1,6 @@
 use blas::{daxpy, dcopy, dnrm2, dscal, idamax};
 use log::{debug, info};
 use rand_mt::Mt64;
-use rand::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
@@ -18,20 +17,21 @@ const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
 const NMCSAMP: usize = 40_000;
+const NBOOTSTRAP: usize = 400;
 const NMCWARMUP: usize = 1000;
-const MCSAMPLE_INTERVAL: usize = 2;
+const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 6;
-const CLEAN_UPDATE_FREQUENCY: usize = 20;
+const CLEAN_UPDATE_FREQUENCY: usize = 2;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
 const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SPREAD: f64 = 0.2;
-const OPTIMISATION_TIME_STEP: f64 = 1e-1;
-const NOPTITER: usize = 10_000;
+const OPTIMISATION_TIME_STEP: f64 = 1e-3;
+const NOPTITER: usize = 1_000;
 const KMAX: usize = NMCSAMP;
-const PARAMTHRESHOLD: f64 = 0.2;
+const PARAMTHRESHOLD: f64 = 0.5;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0,
@@ -158,6 +158,7 @@ fn main() {
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcsample: NMCSAMP,
+        nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
@@ -319,8 +320,6 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            dscal(derivative.n, 1.0 / (NMCSAMP as f64), derivative.ho, incx);
-            dscal(derivative.n, 1.0 / (NMCSAMP as f64), derivative.expval_o, incx);
             daxpy(derivative.n, -mean_energy, derivative.expval_o, incx, derivative.ho, incy);
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }

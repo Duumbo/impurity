@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Write;
 
 use impurity::optimisation::conjugate_gradiant;
-use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
+use impurity::{generate_bitmask, mapto_pairwf, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
 const SEED: u64 = 1434;
@@ -16,10 +16,11 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 10_000;
+const NMCSAMP: usize = 40_000;
+const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
-const MCSAMPLE_INTERVAL: usize = 2;
-const _NTHREADS: usize = 6;
+const MCSAMPLE_INTERVAL: usize = 1;
+const _NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -36,7 +37,6 @@ const OPTIMISE: bool = true;
 const OPTIMISE_GUTZ: bool = true;
 const OPTIMISE_JAST: bool = true;
 const OPTIMISE_ORB: bool = true;
-const DER_FACTEUR: f64 = 1.0;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0,
@@ -148,7 +148,6 @@ fn main() {
     writeln!(fp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
     let mut der_fp = File::create("derivative").unwrap();
     let mut wder_fp = File::create("work_derivative").unwrap();
-    let mut statesfp = File::create("states").unwrap();
     let mut save: bool = true;
     // Initialize logger
     env_logger::init();
@@ -166,6 +165,7 @@ fn main() {
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcsample: NMCSAMP,
+        nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
@@ -261,7 +261,8 @@ fn main() {
         let (mean_energy, accumulated_states, deltae, correlation_time) = {
             compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
         };
-        if save {
+        if true {
+            let mut statesfp = File::create("states").unwrap();
             let mut out_str: String = String::new();
             for s in accumulated_states.iter() {
                 out_str.push_str(&format!("{}\n", s));
@@ -276,88 +277,7 @@ fn main() {
             work_derivative.visited[i] = *elem;
             i += 1;
         }
-        //println!("mu = {}", derivative.mu);
-        //println!("o = {:?}",
-        //    &derivative.o_tilde[NGI+NVIJ+5..derivative.n as usize + derivative.mu as usize * (NGI+NVIJ+8 + 1)].iter().step_by(derivative.n as usize)
-        //    .collect::<Vec<&f64>>());
-        for i in NGI+NVIJ+4..NGI+NVIJ+8 {
-            unsafe {
-                dcopy(
-                    derivative.mu,
-                    &derivative.o_tilde[i..derivative.n as usize + derivative.mu as usize * (i + 1)],
-                    derivative.n,
-                    &mut work_derivative.o_tilde[(i - 4)..work_derivative.n as usize + derivative.mu as usize * (i - 3)],
-                    work_derivative.n
-                );
-                for j in 0..4 {
-                    dscal(
-                        derivative.mu,
-                        DER_FACTEUR,
-                        &mut work_derivative.o_tilde[j+3..work_derivative.n as usize + derivative.mu as usize * (j + 4)],
-                        work_derivative.n,
-                    )
-                }
-            }
-
-        }
-        for i in 0..NGI + NVIJ {
-            unsafe {
-                dcopy(
-                    derivative.mu,
-                    &derivative.o_tilde[i..derivative.n as usize * (i + 1)],
-                    derivative.n,
-                    &mut work_derivative.o_tilde[i..work_derivative.n as usize * (i + 1)],
-                    work_derivative.n
-                );
-            }
-
-        }
-        unsafe {
-            dcopy(
-                NFIJ as i32,
-                &derivative.expval_o[derivative.pfaff_off + NFIJ..derivative.pfaff_off + 2*NFIJ],
-                1,
-                &mut work_derivative.expval_o[derivative.pfaff_off..derivative.pfaff_off + NFIJ],
-                1
-            );
-            dcopy(
-                NFIJ as i32,
-                &derivative.ho[derivative.pfaff_off + NFIJ..derivative.pfaff_off + 2*NFIJ],
-                1,
-                &mut work_derivative.ho[derivative.pfaff_off..derivative.pfaff_off + NFIJ],
-                1
-            );
-            dscal(NFIJ as i32, DER_FACTEUR, &mut work_derivative.expval_o[work_derivative.pfaff_off..work_derivative.pfaff_off + NFIJ], 1);
-            dscal(NFIJ as i32, DER_FACTEUR, &mut work_derivative.ho[work_derivative.pfaff_off..work_derivative.pfaff_off + NFIJ], 1);
-            dcopy(
-                NVIJ as i32,
-                &derivative.expval_o[derivative.jas_off..derivative.jas_off + NVIJ],
-                1,
-                &mut work_derivative.expval_o[work_derivative.jas_off..work_derivative.jas_off + NVIJ],
-                1
-            );
-            dcopy(
-                NVIJ as i32,
-                &derivative.ho[derivative.jas_off..derivative.jas_off + NVIJ],
-                1,
-                &mut work_derivative.ho[work_derivative.jas_off..work_derivative.jas_off + NVIJ],
-                1
-            );
-            dcopy(
-                NGI as i32,
-                &derivative.expval_o[0..NGI],
-                1,
-                &mut work_derivative.expval_o[0..NGI],
-                1
-            );
-            dcopy(
-                NGI as i32,
-                &derivative.ho[0..NGI],
-                1,
-                &mut work_derivative.ho[0..NGI],
-                1
-            );
-        }
+        mapto_pairwf(&derivative, &mut work_derivative, &system_params);
 
         let mut x0 = vec![0.0; NFIJ + NVIJ + NGI];
         x0[(NGI + NVIJ)..(NGI + NVIJ + NFIJ)].copy_from_slice(&fij);
@@ -369,8 +289,6 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            dscal(work_derivative.n, 1.0 / (NMCSAMP as f64), work_derivative.ho, incx);
-            dscal(work_derivative.n, 1.0 / (NMCSAMP as f64), work_derivative.expval_o, incx);
             daxpy(work_derivative.n, -mean_energy, work_derivative.expval_o, incx, work_derivative.ho, incy);
             dcopy(work_derivative.n, work_derivative.ho, incx, &mut b, incy);
         }
@@ -464,7 +382,7 @@ fn main() {
         zero_out_derivatives(&mut derivative);
         let opt_delta = unsafe {
             let incx = 1;
-            dnrm2(derivative.n, &delta_alpha, incx)
+            dnrm2(work_derivative.n, &delta_alpha, incx)
         };
         //error!("Changed parameters by norm {}", opt_delta);
         opt_progress_bar.inc(1);

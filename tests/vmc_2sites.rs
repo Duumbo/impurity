@@ -351,6 +351,7 @@ fn comupte_energy_from_all_states() {
         nvij: NVIJ,
         ngi: NGI,
         mcsample_interval: 1,
+        nbootstrap: 1,
         transfert_matrix: &HOPPINGS,
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
@@ -453,10 +454,6 @@ fn comupte_energy_from_all_states() {
         out_str.push_str(&format!("{}\n", s));
     }
     //statesfp.write(out_str.as_bytes()).unwrap();
-    for i in 0..sys.ngi + sys.nfij + sys.nvij {
-        der.expval_o[i] *= 1.0 / sys.nmcsample as f64;
-        der.ho[i] *= 1.0 / sys.nmcsample as f64;
-    }
 
     println!("Correlation time: {}", cor);
     let mut energy_str: String = String::new();
