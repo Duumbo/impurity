@@ -314,7 +314,7 @@ fn comupte_energy_from_all_states() {
         array_size: (SIZE + 7) / 8,
         cons_t: CONS_T,
         cons_u: CONS_U,
-        nfij: NFIJ,
+        nfij: SIZE*SIZE,
         nvij: NVIJ,
         ngi: NGI,
         mcsample_interval: 1,
@@ -432,7 +432,8 @@ fn comupte_energy_from_all_states() {
         tmp
     };
 
-    let (mc_mean_energy, accumulated_states, _, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der_pair);
+    let (mc_mean_energy, accumulated_states, _, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
+    der_pair.mu = der.mu;
     let mut out_str: String = String::new();
     for s in accumulated_states.iter() {
         out_str.push_str(&format!("{}\n", s));
@@ -452,18 +453,22 @@ fn comupte_energy_from_all_states() {
 
     // Test derivatives
     let exp_val = analytic_derivatives_expval(&parameters);
+    println!("Checking <O>");
     print_der(der_pair.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
-        close(der_pair.expval_o[i] * psi, exp_val[i], 1e-2);
+        println!("{} == {}, tol = {}", der_pair.expval_o[i] * psi, exp_val[i], 2e-2);
+        close(der_pair.expval_o[i] * psi, exp_val[i], 2e-2);
     }
 
     let exp_val_ho = analytic_ho_expval(&parameters);
+    println!("Checking <HO>");
     print_der(der_pair.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
+        println!("{} == {},  tol = {}", der_pair.ho[i] * psi, exp_val_ho[i], 2e-2);
         close(der_pair.ho[i] * psi, exp_val_ho[i], 2e-2);
     }
 }

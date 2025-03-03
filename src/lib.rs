@@ -101,11 +101,20 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
 }
 
 pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator, sys: &SysParams) {
+    if input.mu != output.mu {
+        error!("Input dimension does not match output dimension. Make sure to match mu for both structures.");
+        panic!("Undefined Behavior.");
+    }
+    if input.mu < 0 {
+        error!("Dimension cannot be negative; is it empty?");
+        panic!("Undefined Behavior");
+    }
     let nfij = sys.size*sys.size;
     let der_facteur = 2.0;
     // Copy and scale fij from FIJ
     for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
         unsafe {
+            //println!("{}", output.mu);
             dcopy(
                 input.mu,
                 &input.o_tilde[i..input.n as usize + input.mu as usize * (i + 1)],
@@ -152,8 +161,8 @@ pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator,
             &mut output.ho[input.pfaff_off..input.pfaff_off + nfij],
             1
         );
-        dscal(nfij as i32, der_facteur, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
-        dscal(nfij as i32, der_facteur, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 0);
+        dscal(nfij as i32, der_facteur / sys.nmcsample as f64, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
+        dscal(nfij as i32, der_facteur / sys.nmcsample as f64, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
         dcopy(
             sys.nvij as i32,
             &input.expval_o[input.jas_off..input.jas_off + sys.nvij],
