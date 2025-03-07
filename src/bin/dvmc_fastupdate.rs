@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
-use impurity::optimisation::{conjugate_gradiant, spread_eigenvalues};
+use impurity::optimisation::{conjugate_gradiant, exact_overlap_inverse, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
@@ -16,8 +16,8 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 40_000;
-const NBOOTSTRAP: usize = 400;
+const NMCSAMP: usize = 10_000;
+const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 6;
@@ -27,8 +27,8 @@ const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
 const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
-const EPSILON_SPREAD: f64 = 0.2;
-const OPTIMISATION_TIME_STEP: f64 = 1e-3;
+const EPSILON_SPREAD: f64 = 0.01;
+const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const NOPTITER: usize = 1_000;
 const KMAX: usize = NMCSAMP;
 const PARAMTHRESHOLD: f64 = 0.5;
@@ -324,15 +324,15 @@ fn main() {
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }
         spread_eigenvalues(&mut derivative);
-        conjugate_gradiant(&derivative, &mut b, &mut x0, EPSILON_CG, KMAX, NPARAMS as i32, PARAMTHRESHOLD);
+        exact_overlap_inverse(&derivative, &mut b, &mut x0, EPSILON_CG, KMAX, NPARAMS as i32, PARAMTHRESHOLD);
         info!("Need to update parameters with: {:?}", x0);
         unsafe {
             let incx = 1;
             let incy = 1;
             let alpha = - OPTIMISATION_TIME_STEP;
-            daxpy(NGI as i32, alpha, &x0, incx, &mut parameters.gi, incy);
-            daxpy(NVIJ as i32, alpha, &x0[NGI..NPARAMS], incx, &mut parameters.vij, incy);
-            daxpy(NFIJ as i32, alpha, &x0[NGI + NVIJ..NPARAMS], incx, &mut parameters.fij, incy);
+            daxpy(NGI as i32, alpha, &b, incx, &mut parameters.gi, incy);
+            daxpy(NVIJ as i32, alpha, &b[NGI..NPARAMS], incx, &mut parameters.vij, incy);
+            daxpy(NFIJ as i32, alpha, &b[NGI + NVIJ..NPARAMS], incx, &mut parameters.fij, incy);
         }
         info!("Correctly finished optimisation iteration {}", opt_iter);
         // Sorella Louche stuff

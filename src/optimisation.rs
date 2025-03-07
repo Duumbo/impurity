@@ -3,7 +3,6 @@ use lapack::dsyev;
 use log::{error, trace};
 use colored::Colorize;
 use std::fs::File;
-use std::io::prelude::*;
 
 use crate::DerivativeOperator;
 
@@ -306,9 +305,7 @@ fn compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f6
     }
 }
 
-/// Computes the solution of $A\mathbf{x}-\mathbf{b}=0$
-/// TODOC
-pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64) -> Vec<bool>{
+pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64) -> Vec<bool>{
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
     //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
@@ -361,11 +358,44 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         }
         *e = 1.0 / *e;
     }
-    compute_delta_from_eigenvalues(x0, &unfiltered_s, &eigenvalues, dim);
+    compute_delta_from_eigenvalues(b, &unfiltered_s, &eigenvalues, dim);
     return ignore;
+}
+
+/// Computes the solution of $A\mathbf{x}-\mathbf{b}=0$
+/// TODOC
+pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
+{
+    // PRE FILTER
+    let mut ignore = vec![false; dim as usize];
+    //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
+    //println!("dim = {}, Unfiltered S = ", dim);
+    //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
+    let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
+    //println!("ignore : {:?}", ignore);
+    let mut otilde = vec![0.0; new_dim * a.mu as usize];
+    let mut expvalo = vec![0.0; new_dim];
+    cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
+    //let filtered_s = compute_s_explicit(&otilde, &expvalo, a.visited, new_dim as i32, a.mu, a.nsamp);
+    //let eigenvectors = &unfiltered_s;
+    //println!("S = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
+    //compute_matrix_product(&mut s_copy, &eigenvectors, &eigenvalues, dim);
+    //println!("S^[-1] = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
+    //panic!("stop");
+    //let mut x0_raw = vec![0.0; dim as usize];
+    //unsafe {
+    //    let incx = 1;
+    //    let incy = 1;
+    //    dgemv(b"T"[0], dim, dim, 1.0, &s_copy, dim, x0, incx, 0.0, &mut x0_raw, incy);
+    //}
+    //println!("UD^[-1]U^[T] = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
+    //println!("x0 = {:?}", x0_raw);
+    //println!("eigenvalues: {:?}", eigenvalues);
+
+    // Remove problematic eigenvalue
     let mut fp = File::create("overlap").unwrap();
     //fp.write_all(save_otilde(&filtered_s, new_dim as usize, new_dim as usize).as_bytes()).unwrap();
-    println!("dim = {}, Filtered S = ", new_dim);
+    //println!("dim = {}, Filtered S = ", new_dim);
     //println!("{}", save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
     //println!("{}", save_otilde(&otilde, a.mu as usize, new_dim as usize));
 
@@ -380,7 +410,7 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         }
         e += b[i] * b[i];
     }
-    e *= epsilon;
+    e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
     //println!("Error threshold e = {}", e);
     gradient(x0, &otilde, a.visited, &expvalo, b, new_dim as i32, a.mu, a.nsamp);
@@ -408,11 +438,11 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
         trace!("alpha_{} : {}", k, alpha);
         //println!("alpha_{} : {}", k, alpha);
-        if alpha < 0.0 {
-            //error!("Input overlap matrix S was not positive-definite.");
-            break;
-            //panic!("p^T S p < 0.0");
-        }
+        //if alpha < 0.0 {
+        //    //error!("Input overlap matrix S was not positive-definite.");
+        //    break;
+        //    //panic!("p^T S p < 0.0");
+        //}
         update_x(x0, &p, alpha, new_dim as i32);
         trace!("x_{} : {:?}", k+1, x0);
         //println!("x_{} : {:?}", k+1, x0);

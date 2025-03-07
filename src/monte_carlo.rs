@@ -7,7 +7,7 @@ use std::io::Write;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
-use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams};
+use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams, Hopper};
 use crate::density::{compute_internal_product_parts, fast_internal_product};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
@@ -193,7 +193,7 @@ fn energy_error_estimation(
 }
 
 #[inline(always)]
-fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeOperator) {
+fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeOperator, rho: f64) {
     // Accumulate Energy
     *energy += state_energy;
     let last_line_begin = (der.n * der.mu) as usize;
@@ -213,7 +213,7 @@ fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeO
     }
     // Accumulate <O>
     for i in 0 .. der.n as usize {
-        der.expval_o[i] += der.o_tilde[i + last_line_begin];
+        der.expval_o[i] += der.o_tilde[i + last_line_begin] * rho;
     }
 }
 
@@ -226,6 +226,62 @@ fn normalize(energy: &mut f64, energy_bootstraped: &mut f64, expval_o: &mut [f64
         expval_o[i] *= 1.0 / nsample;
         ho[i] *= 1.0 / nsample;
     }
+}
+
+#[inline(always)]
+fn sq(x: f64) -> f64
+{
+    x * x
+}
+
+pub fn compute_mean_energy_exact(initial_state: FockState<u8>, params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator) -> f64
+{
+    if der.mu != -1 {
+        error!("The derivative operator current row was mu = {} on entry, is it reinitialized?", der.mu);
+    }
+    //let all_states = initial_state.generate_all_hoppings(sys.hopping_bitmask);
+    let all_states = vec![
+        FockState{spin_up: 128u8, spin_down: 128u8, n_sites: 2},
+        FockState{spin_up: 64u8, spin_down: 128u8, n_sites: 2},
+        FockState{spin_up: 64u8, spin_down: 64u8, n_sites: 2},
+        FockState{spin_up: 128u8, spin_down: 64u8, n_sites: 2},
+    ];
+
+    let mut energy = 0.0;
+    let mut norm = 0.0;
+    der.mu = 0;
+    let mut state_energy;
+
+    for state2 in all_states.iter() {
+        let (pstate, proj) = compute_internal_product_parts(*state2, params, sys);
+        norm += sq(<f64>::abs(pstate.pfaff) * <f64>::exp(proj));
+        let rho = <f64>::abs(pstate.pfaff) * <f64>::exp(proj);
+        println!("rho = {}", sq(rho));
+        compute_derivative_operator(*state2, &pstate, der, sys);
+        state_energy = compute_hamiltonian(*state2, &pstate, proj, params, sys) * sq(rho);
+        accumulate_expvals(&mut energy, state_energy, der, sq(rho));
+        der.visited[der.mu as usize] = 1;
+        let mut outstr = "".to_owned();
+        outstr.push_str(&format!("H_mu O_k mu  ="));
+        for i in 0..der.n as usize {
+            outstr.push_str(&format!("{}   ", der.o_tilde[i + (der.n * der.mu) as usize] * state_energy));
+            der.o_tilde[i + (der.n * der.mu) as usize] *= rho;
+        }
+        println!("{}", outstr);
+        der.mu += 1;
+
+    }
+    println!("energy = {}", energy);
+    for i in 0.. der.n as usize {
+        der.expval_o[i] *= 1.0 / norm;
+        der.ho[i] *= 1.0 / norm;
+    }
+    for i in 0..der.mu as usize {
+        for j in 0..der.n as usize {
+            der.o_tilde[j + i * der.n as usize] *= 1.0 / <f64>::sqrt(norm);
+        }
+    }
+    energy / norm
 }
 
 pub fn compute_mean_energy
@@ -312,7 +368,7 @@ where Standard: Distribution<T>
             derivatives.visited[derivatives.mu as usize] += 1;
             let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
 
-            accumulate_expvals(&mut energy, state_energy, derivatives);
+            accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
             energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
                 energy_quad_sums, &mut n_values, mc_it, error_estimation_level);
             sample_counter = 0;
@@ -326,7 +382,7 @@ where Standard: Distribution<T>
     derivatives.mu += 1;
     info!("Final Energy: {:.2}", energy);
     normalize(&mut energy, &mut energy_bootstraped, &mut derivatives.expval_o, &mut derivatives.ho,
-        sys.nmcsample as f64, sys.nbootstrap as f64, sys.ngi + sys.nvij + sys.nfij);
+        sys.nmcsample as f64, sys.nbootstrap as f64, derivatives.n as usize);
     info!("Final Energy normalized: {:.2}", energy);
     // Error estimation
     let mut error = vec![0.0; error_estimation_level];
@@ -335,6 +391,9 @@ where Standard: Distribution<T>
             (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / ((n_values[i]*n_values[i]) as f64)) /
             (n_values[i] * (n_values[i] - 1)) as f64
             );
+    }
+    if derivatives.mu == -1 {
+        warn!("Parameter mu was -1 on exit, was it updated?");
     }
     let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
     (energy_bootstraped, accumulated_states, error[error_estimation_level - 1], correlation_time)

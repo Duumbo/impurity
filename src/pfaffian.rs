@@ -14,7 +14,7 @@ use std::fmt;
 /// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
 /// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
 /// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PfaffianState {
     pub n_elec: usize,
     pub n_sites: usize,

@@ -1,7 +1,7 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use blas::{dcopy, dscal};
+use blas::{dcopy, dscal, dgemm};
 
 /// Input file parsing util.
 /// # Subfiles
@@ -100,6 +100,25 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
     }
 }
 
+
+fn save_otilde(der: &DerivativeOperator) {
+    let width = 16;
+    let mut c = vec![0.0; (der.n * der.n) as usize];
+    println!("dim = {}", der.n * der.n);
+    unsafe {
+        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, der.o_tilde, der.n, der.o_tilde, der.n, 0.0, &mut c, der.n);
+    }
+    let mut outstr = "".to_owned();
+    outstr.push_str(&format!("<O_kO_m> = "));
+    for i in 0..der.n as usize {
+        outstr.push_str(&format!("\n           "));
+        for j in 0..der.n as usize {
+            outstr.push_str(&format!("{:>width$.04e}", c[i + der.n as usize * j]));
+        }
+    }
+    println!("{}", outstr);
+}
+
 pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator, sys: &SysParams) {
     if input.mu != output.mu {
         error!("Input dimension does not match output dimension. Make sure to match mu for both structures.");
@@ -110,7 +129,8 @@ pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator,
         panic!("Undefined Behavior");
     }
     let nfij = sys.size*sys.size;
-    let der_facteur = 2.0;
+    // DUmbo comprendre plus tart
+    let der_facteur = 1.0;
     // Copy and scale fij from FIJ
     for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
         unsafe {
@@ -122,14 +142,14 @@ pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator,
                 &mut output.o_tilde[(i - nfij)..output.n as usize + output.mu as usize * (i - nfij + 1)],
                 output.n
             );
-            for j in 0..nfij {
-                dscal(
-                    output.mu,
-                    der_facteur,
-                    &mut output.o_tilde[j+sys.ngi+sys.nvij..output.n as usize + output.mu as usize * (j + 1 + sys.ngi + sys.nvij)],
-                    output.n,
-                )
-            }
+            //for j in 0..nfij {
+            //    dscal(
+            //        output.mu,
+            //        der_facteur,
+            //        &mut output.o_tilde[j+sys.ngi+sys.nvij..output.n as usize + output.mu as usize * (j + 1 + sys.ngi + sys.nvij)],
+            //        output.n,
+            //    )
+            //}
         }
 
     }
@@ -161,8 +181,8 @@ pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator,
             &mut output.ho[input.pfaff_off..input.pfaff_off + nfij],
             1
         );
-        dscal(nfij as i32, der_facteur / sys.nmcsample as f64, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
-        dscal(nfij as i32, der_facteur / sys.nmcsample as f64, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
+        //dscal(nfij as i32, der_facteur, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
+        //dscal(nfij as i32, der_facteur, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
         dcopy(
             sys.nvij as i32,
             &input.expval_o[input.jas_off..input.jas_off + sys.nvij],
