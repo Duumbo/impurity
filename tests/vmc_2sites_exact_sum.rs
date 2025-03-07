@@ -1,5 +1,5 @@
 use assert::close;
-use impurity::monte_carlo::compute_mean_energy;
+use impurity::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
 use rand::prelude::*;
 use impurity::gutzwiller::compute_gutzwiller_exp;
 use impurity::jastrow::compute_jastrow_exp;
@@ -255,14 +255,14 @@ fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
     //out_der[4] =
     //out_der[5] =
     //out_der[6] =
-    out_der[3] = 2.0 * {
+    out_der[3] = 1.0 * {
         <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
             * individual_state(&State::F10, par)
             * energy_individual_state(&State::F10, par)
     };
-    out_der[4] = 2.0 * energy_individual_state(&State::F6, par);
-    out_der[5] = 2.0 * energy_individual_state(&State::F9, par);
-    out_der[6] = 2.0 * {
+    out_der[4] = 1.0 * energy_individual_state(&State::F6, par);
+    out_der[5] = 1.0 * energy_individual_state(&State::F9, par);
+    out_der[6] = 1.0 * {
         <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
             * individual_state(&State::F5, par)
             * energy_individual_state(&State::F5, par)
@@ -277,13 +277,13 @@ fn analytic_derivatives_expval(par: &VarParams) -> Vec<f64> {
     out_der[1] = sq(individual_state(&State::F5, par));
     out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
     // fij
-    out_der[3] = 2.0 * {
+    out_der[3] = 1.0 * {
         <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
             * sq(individual_state(&State::F10, par))
     };
-    out_der[4] = 2.0 * individual_state(&State::F6, par);
-    out_der[5] = 2.0 * individual_state(&State::F9, par);
-    out_der[6] = 2.0 * {
+    out_der[4] = 1.0 * individual_state(&State::F6, par);
+    out_der[5] = 1.0 * individual_state(&State::F9, par);
+    out_der[6] = 1.0 * {
         <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
             * sq(individual_state(&State::F5, par))
     };
@@ -390,6 +390,7 @@ fn comupte_energy_from_all_states() {
         energy_individual_state(&states_names[i], &parameters), 1e-12);
     }
     close(mean_energy, analytic(&parameters), 1e-12);
+    mean_energy = mean_energy / norm(&parameters);
     let mut otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
     let mut expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
     let mut expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
@@ -432,23 +433,22 @@ fn comupte_energy_from_all_states() {
         tmp
     };
 
-    let (mc_mean_energy, accumulated_states, _, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
+    let mean_energy_es = compute_mean_energy_exact(initial_state, &parameters, &sys, &mut der);
     der_pair.mu = der.mu;
     let mut out_str: String = String::new();
-    for s in accumulated_states.iter() {
-        out_str.push_str(&format!("{}\n", s));
-    }
+    //for s in accumulated_states.iter() {
+    //    out_str.push_str(&format!("{}\n", s));
+    //}
     //statesfp.write(out_str.as_bytes()).unwrap();
 
-    println!("Correlation time: {}", cor);
-    let error = <f64>::sqrt((1.0 + 2.0 * cor) / (NMCSAMP as f64));
+    //println!("Correlation time: {}", cor);
+    //let error = <f64>::sqrt((1.0 + 2.0 * cor) / (NMCSAMP as f64));
     let mut energy_str: String = String::new();
-    energy_str.push_str(&format!("{} {} {}\n", mean_energy, mc_mean_energy, error));
+    energy_str.push_str(&format!("{} {}\n", mean_energy, mean_energy_es));
     //energyfp.write(energy_str.as_bytes()).unwrap();
-    println!("Comparing monte-carlo energy, tol: {}", error);
-    mean_energy = -0.47;
-    println!("Monte-Carlo: {}, Analytic: {}", mc_mean_energy, mean_energy);
-    close(mc_mean_energy, mean_energy, 1e-2);
+    //println!("Comparing monte-carlo energy, tol: {}", error);
+    println!("Monte-Carlo: {}, Analytic: {}", mean_energy_es, mean_energy);
+    close(mean_energy_es, mean_energy, 1e-16);
     mapto_pairwf(&der, &mut der_pair, &sys);
 
     // Test derivatives
@@ -458,8 +458,8 @@ fn comupte_energy_from_all_states() {
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
-        println!("{} == {}, tol = {}", der_pair.expval_o[i] * psi, exp_val[i], 2e-2);
-        close(der_pair.expval_o[i] * psi, exp_val[i], 2e-2);
+        println!("{} == {}, tol = {}", der_pair.expval_o[i], exp_val[i] / psi, 1e-12);
+        close(der_pair.expval_o[i], exp_val[i] / psi, 1e-12);
     }
 
     let exp_val_ho = analytic_ho_expval(&parameters);
@@ -468,7 +468,7 @@ fn comupte_energy_from_all_states() {
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
-        println!("{} == {},  tol = {}", der_pair.ho[i] * psi, exp_val_ho[i], 2e-2);
-        close(der_pair.ho[i] * psi, exp_val_ho[i], 2e-2);
+        println!("{} == {},  tol = {}", der_pair.ho[i], exp_val_ho[i] / psi, 1e-12);
+        close(der_pair.ho[i], exp_val_ho[i] / psi, 1e-12);
     }
 }
