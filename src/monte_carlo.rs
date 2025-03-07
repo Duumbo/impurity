@@ -2,8 +2,6 @@ use blas::daxpy;
 use log::{error, info, trace, warn};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-use std::fs::File;
-use std::io::Write;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
@@ -290,7 +288,6 @@ T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
 (rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64, f64)
 where Standard: Distribution<T>
 {
-    let mut ratiofp = File::create("ratios").unwrap();
     if derivatives.mu != -1 {
         warn!("The derivative operator current row was mu = {} on entry, is it reinitialized?", derivatives.mu);
     }
@@ -336,7 +333,6 @@ where Standard: Distribution<T>
         trace!("Ratio: {}", ratio);
         ratio *= <f64>::exp(proj_copy - proj);
         let w = rng.gen::<f64>();
-        ratiofp.write(format!("De {}, à {} = {}\n", state, state2, <f64>::abs(ratio) * <f64>::abs(ratio)).as_bytes()).unwrap();
         if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
             // We ACCEPT
             trace!("Accept.");
