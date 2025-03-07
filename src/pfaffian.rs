@@ -14,7 +14,7 @@ use std::fmt;
 /// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
 /// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
 /// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PfaffianState {
     pub n_elec: usize,
     pub n_sites: usize,
@@ -60,7 +60,7 @@ impl fmt::Display for PfaffianState {
 /// * __`a`__ - The matrix $A$ of the variationnal parameters.
 /// * __`n`__ - The dimension of the matrix, this correspond to the number of
 /// electrons.
-fn invert_matrix(a: &mut [f64], n: i32) {
+fn invert_matrix(a: &mut [f64], n: i32) -> f64 {
     // Info output of lapack
     let mut info1: i32 = 0;
     let mut info2: i32 = 0;
@@ -69,11 +69,18 @@ fn invert_matrix(a: &mut [f64], n: i32) {
     let n_entry: i32 = n * n;
     // Workspaces
     let mut work: Vec<f64> = Vec::with_capacity(n_entry as usize);
-    let mut ipiv: Vec<i32> = Vec::with_capacity(n as usize);
+    let mut ipiv: Vec<i32> = vec![0; n as usize];
 
     // Inverse matrix `a` inplace using L*U decomposition.
+    let mut determinant = 1.0;
     unsafe {
         dgetrf(n, n, a, n, &mut ipiv, &mut info1);
+        for i in 0..n as usize {
+            determinant *= a[i + i*n as usize];
+            if ipiv[i] != (i  + 1) as i32 {
+                determinant *= -1.0;
+            }
+        }
         dgetri(n, a, n, &ipiv, &mut work, n_entry, &mut info2);
     }
 
@@ -88,6 +95,7 @@ fn invert_matrix(a: &mut [f64], n: i32) {
         );
         panic!("Matrix invertion fail.");
     }
+    determinant
 }
 
 #[allow(dead_code)]
@@ -117,7 +125,7 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
 /// # Fields
 /// * __`fij`__ - All the variationnal parameters.
 /// * __`state`__ - The state of the system.
-pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>) -> PfaffianState
+pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>, sys: &SysParams) -> PfaffianState
 where
     T: BitOps + std::fmt::Display,
 {
@@ -161,30 +169,32 @@ where
                 -fij[indices2[jj] + size * indices[ii] + size*size];
         }
     }
-    for jj in 0..indices.len() {
-        for ii in 0..indices.len() {
-            if indices[ii] == indices[jj] {
-                continue;
+    if !sys.pair_wavefunction {
+        for jj in 0..indices.len() {
+            for ii in 0..indices.len() {
+                if indices[ii] == indices[jj] {
+                    continue;
+                }
+                a[ii + jj * n] =
+                    fij[indices[ii] + size * indices[jj]]
+                    -fij[indices[jj] + size * indices[ii]];
+                a[jj + ii * n] =
+                    fij[indices[jj] + size * indices[ii]]
+                    -fij[indices[ii] + size * indices[jj]];
             }
-            a[ii + jj * n] =
-                fij[indices[ii] + size * indices[jj]]
-                -fij[indices[jj] + size * indices[ii]];
-            a[jj + ii * n] =
-                fij[indices[jj] + size * indices[ii]]
-                -fij[indices[ii] + size * indices[jj]];
         }
-    }
-    for jj in 0..indices2.len() {
-        for ii in 0..indices2.len() {
-            if indices2[ii] == indices2[jj] {
-                continue;
+        for jj in 0..indices2.len() {
+            for ii in 0..indices2.len() {
+                if indices2[ii] == indices2[jj] {
+                    continue;
+                }
+                a[ii + off + (jj + off) * n] =
+                     fij[indices2[ii] + size * indices2[jj] + 3*size*size]
+                     -fij[indices2[jj] + size * indices2[ii] + 3*size*size];
+                a[jj + off + (ii + off) * n] =
+                     fij[indices2[jj] + size * indices2[ii] + 3*size*size]
+                     -fij[indices2[ii] + size * indices2[jj] + 3*size*size];
             }
-            a[ii + off + (jj + off) * n] =
-                 fij[indices2[ii] + size * indices2[jj] + 3*size*size]
-                 -fij[indices2[jj] + size * indices2[ii] + 3*size*size];
-            a[jj + off + (ii + off) * n] =
-                 fij[indices2[jj] + size * indices2[ii] + 3*size*size]
-                 -fij[indices2[ii] + size * indices2[jj] + 3*size*size];
         }
     }
 
@@ -224,22 +234,24 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
             trace!("~O_[{}, {}] = {}", der.pfaff_off + indices[ii] + size * indices2[jj] + 2 * size * size, der.mu, -a[(jj + off) * n + ii]);
         }
     }
-    for jj in 0..indices.len() {
-        for ii in 0..indices.len() {
-            if indices[ii] == indices[jj] {
-                continue;
+    if !sys.pair_wavefunction {
+        for jj in 0..indices.len() {
+            for ii in 0..indices.len() {
+                if indices[ii] == indices[jj] {
+                    continue;
+                }
+                der.o_tilde[der.pfaff_off + indices[ii] + size * indices[jj] + (der.n * der.mu) as usize] = -a[ii + jj * n];
+                der.o_tilde[der.pfaff_off + indices[jj] + size * indices[ii] + (der.n * der.mu) as usize] = -a[jj + ii * n];
             }
-            der.o_tilde[der.pfaff_off + indices[ii] + size * indices[jj] + (der.n * der.mu) as usize] = -a[ii + jj * n];
-            der.o_tilde[der.pfaff_off + indices[jj] + size * indices[ii] + (der.n * der.mu) as usize] = -a[jj + ii * n];
         }
-    }
-    for jj in 0..indices2.len() {
-        for ii in 0..indices2.len() {
-            if indices2[ii] == indices2[jj] {
-                continue;
+        for jj in 0..indices2.len() {
+            for ii in 0..indices2.len() {
+                if indices2[ii] == indices2[jj] {
+                    continue;
+                }
+                der.o_tilde[der.pfaff_off + indices2[ii] + size * indices2[jj] + 3*size*size + (der.n * der.mu) as usize] = -a[ii + off + (jj + off) * n];
+                der.o_tilde[der.pfaff_off + indices2[jj] + size * indices2[ii] + 3*size*size + (der.n * der.mu) as usize] = -a[jj + off + (ii + off) * n];
             }
-            der.o_tilde[der.pfaff_off + indices2[ii] + size * indices2[jj] + 3*size*size + (der.n * der.mu) as usize] = -a[ii + off + (jj + off) * n];
-            der.o_tilde[der.pfaff_off + indices2[jj] + size * indices2[ii] + 3*size*size + (der.n * der.mu) as usize] = -a[jj + off + (ii + off) * n];
         }
     }
 }
@@ -262,7 +274,6 @@ pub fn get_pfaffian_ratio(
     spin: Spin,
     fij: &[f64],
 ) -> (f64, Vec<f64>, usize) {
-
     // Rename
     let indx_up = &previous_pstate.indices.0;
     trace!("Up : {:?}", indx_up);
@@ -631,6 +642,26 @@ mod tests {
     #[test]
     fn test_pfaffian_update_random_no_sign_correction() {
         const SIZE: usize = 8;
+        let sys = crate::SysParams {
+            size: SIZE,
+            nelec: 0,
+            array_size: (SIZE + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: SIZE*(SIZE-1)/2,
+            ngi: SIZE,
+            mcsample_interval: 1,
+            nbootstrap: 1,
+            transfert_matrix: &[],
+            hopping_bitmask: &[],
+            clean_update_frequency: 0,
+            nmcwarmup: 0,
+            nmcsample: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+        };
         let mut rng = SmallRng::seed_from_u64(42);
         // Size of the system
         let mut params = vec![0.0; 4 * SIZE * SIZE];
@@ -655,7 +686,7 @@ mod tests {
             // Matrix needs to be even sized
             if n % 2 == 1 { continue;}
             println!("------------- Initial State ----------------");
-            let mut pfstate = construct_matrix_a_from_state(&params, state);
+            let mut pfstate = construct_matrix_a_from_state(&params, state, &sys);
             println!("Inverse Matrix: {}", pfstate);
             let s: Spin;
 
@@ -715,7 +746,7 @@ mod tests {
             let hop: (usize, usize, Spin) = (initial_index, final_index, s);
 
             println!("------------- Updated State Long way ----------------");
-            let mut pfstate2 = construct_matrix_a_from_state(&params, state2);
+            let mut pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
             println!("Inverse Matrix: {}", pfstate2);
             println!("------------- Proposed Update ------------------");
             println!("Jumps from: {}, Lands on: {}", initial_index, final_index);
@@ -750,6 +781,26 @@ mod tests {
     #[test]
     fn test_pfaffian_8sites_u8() {
         const SIZE: usize = 8;
+        let sys = crate::SysParams {
+            size: SIZE,
+            nelec: 0,
+            array_size: (SIZE + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: SIZE*(SIZE-1)/2,
+            ngi: SIZE,
+            mcsample_interval: 1,
+            nbootstrap: 1,
+            transfert_matrix: &[],
+            hopping_bitmask: &[],
+            clean_update_frequency: 0,
+            nmcwarmup: 0,
+            nmcsample: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+        };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
         params[7 + SIZE * 7] = 1.0;
@@ -765,7 +816,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(&params, state);
+        let pfstate = construct_matrix_a_from_state(&params, state, &sys);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.04, 1e-12);
     }
@@ -773,6 +824,26 @@ mod tests {
     #[test]
     fn test_pfaffian_8sites_u8_update_spin_up() {
         const SIZE: usize = 8;
+        let sys = crate::SysParams {
+            size: SIZE,
+            nelec: 0,
+            array_size: (SIZE + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: SIZE*(SIZE-1)/2,
+            ngi: SIZE,
+            mcsample_interval: 1,
+            nbootstrap: 1,
+            transfert_matrix: &[],
+            hopping_bitmask: &[],
+            clean_update_frequency: 0,
+            nmcwarmup: 0,
+            nmcsample: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+        };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
         params[7 + SIZE * 7] = 1.0;
@@ -798,7 +869,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(&params, state);
+        let pfstate = construct_matrix_a_from_state(&params, state, &sys);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.04, 1e-12);
         let state2 = crate::FockState {
@@ -806,7 +877,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate2 = construct_matrix_a_from_state(&params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
         let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, &params).0;
         close(pfstate.pfaff * pfaff_ratio, pfstate2.pfaff, 1e-12);
@@ -815,6 +886,26 @@ mod tests {
     #[test]
     fn test_pfaffian_8sites_u8_update_spin_down() {
         const SIZE: usize = 8;
+        let sys = crate::SysParams {
+            size: SIZE,
+            nelec: 0,
+            array_size: (SIZE + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: SIZE*(SIZE-1)/2,
+            ngi: SIZE,
+            mcsample_interval: 1,
+            nbootstrap: 1,
+            transfert_matrix: &[],
+            hopping_bitmask: &[],
+            clean_update_frequency: 0,
+            nmcwarmup: 0,
+            nmcsample: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+        };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
         params[7 + SIZE * 7] = 1.0;
@@ -856,7 +947,7 @@ mod tests {
             spin_down: 3u8,
             n_sites: SIZE,
         };
-        let pfstate = construct_matrix_a_from_state(&params, state);
+        let pfstate = construct_matrix_a_from_state(&params, state, &sys);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
@@ -864,7 +955,7 @@ mod tests {
             spin_down: 5u8,
             n_sites: SIZE,
         };
-        let pfstate2 = construct_matrix_a_from_state(&params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
         let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
         println!("B: {:?}", tmp.1);
@@ -875,6 +966,26 @@ mod tests {
     #[test]
     fn test_pfaffian_8sites_u8_update_matrix() {
         const SIZE: usize = 8;
+        let sys = crate::SysParams {
+            size: SIZE,
+            nelec: 0,
+            array_size: (SIZE + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: SIZE*(SIZE-1)/2,
+            ngi: SIZE,
+            mcsample_interval: 1,
+            nbootstrap: 1,
+            transfert_matrix: &[],
+            hopping_bitmask: &[],
+            clean_update_frequency: 0,
+            nmcwarmup: 0,
+            nmcsample: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+        };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
         params[7 + SIZE * 7] = 1.0;
@@ -917,7 +1028,7 @@ mod tests {
             n_sites: SIZE,
         };
         println!("------------- Initial State ----------------");
-        let mut pfstate = construct_matrix_a_from_state(&params, state);
+        let mut pfstate = construct_matrix_a_from_state(&params, state, &sys);
         println!("Inverse Matrix: {}", pfstate);
         close(pfstate.pfaff, 0.84, 1e-12);
         let state2 = crate::FockState {
@@ -927,7 +1038,7 @@ mod tests {
         };
         let hop: (usize, usize, Spin) = (6, 5, Spin::Down);
         println!("------------- Updated State Long way ----------------");
-        let pfstate2 = construct_matrix_a_from_state(&params, state2);
+        let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
         println!("------------- Proposed Update ------------------");
         let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
@@ -942,4 +1053,5 @@ mod tests {
             close(*good, test, 1e-12);
         }
     }
+
 }

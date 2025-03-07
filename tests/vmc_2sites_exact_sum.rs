@@ -1,16 +1,15 @@
 use assert::close;
-use impurity::monte_carlo::compute_mean_energy;
-use rand::prelude::*;
+use impurity::monte_carlo::compute_mean_energy_exact;
 use impurity::gutzwiller::compute_gutzwiller_exp;
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::pfaffian::construct_matrix_a_from_state;
-use impurity::{FockState, VarParams, SysParams, generate_bitmask, RandomStateGeneration, DerivativeOperator};
+use impurity::{generate_bitmask, mapto_pairwf, DerivativeOperator, FockState, SysParams, VarParams};
 use impurity::hamiltonian::{kinetic, potential};
 
 // Number of sites
 const SIZE: usize = 2;
 // Hubbard's model $U$ parameter
-const CONS_U: f64 = 4.0;
+const CONS_U: f64 = 8.0;
 // Hubbard's model $t$ parameter
 const CONS_T: f64 = -1.0;
 // Number of electrons
@@ -38,6 +37,45 @@ pub enum State {
     F9,
     F10,
     F12
+}
+
+fn individual_state(state: &State, par: &VarParams) -> f64 {
+    match state {
+        State::F3 => {
+            let f01dd = par.fij[0 + 1 * SIZE + 3 * SIZE * SIZE];
+            let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
+            f01dd - f10dd
+        },
+        State::F5 => {
+            let f11ud = par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE];
+            let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
+            let g1 = par.gi[1];
+            let v = par.vij[0];
+            (f11ud - f11du) * <f64>::exp(g1 - v)
+        },
+        State::F6 => {
+            let f10ud = par.fij[1 + 0 * SIZE + 1 * SIZE * SIZE];
+            let f01du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
+            f10ud - f01du
+        },
+        State::F9 => {
+            let f01ud = par.fij[0 + 1 * SIZE + 1 * SIZE * SIZE];
+            let f10du = par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
+            f01ud - f10du
+        },
+        State::F10 => {
+            let f00ud = par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE];
+            let f00du = par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE];
+            let g0 = par.gi[0];
+            let v = par.vij[0];
+            (f00ud - f00du) * <f64>::exp(g0 - v)
+        },
+        State::F12 => {
+            let f01uu = par.fij[0 + 1 * SIZE + 0 * SIZE * SIZE];
+            let f10uu = par.fij[1 + 0 * SIZE + 0 * SIZE * SIZE];
+            f01uu - f10uu
+        },
+    }
 }
 
 fn norm(par: &VarParams) -> f64 {
@@ -113,45 +151,6 @@ fn print_ip(par: &VarParams) {
     //statesipfp.write(&format!("<9|psi> = {}\n", psi9).as_bytes()).unwrap();
     //statesipfp.write(&format!("<6|psi> = {}\n", psi6).as_bytes()).unwrap();
     //statesipfp.write(&format!("<10|psi> = {}\n", psi10).as_bytes()).unwrap();
-}
-
-fn individual_state(state: &State, par: &VarParams) -> f64 {
-    match state {
-        State::F3 => {
-            let f01dd = par.fij[0 + 1 * SIZE + 3 * SIZE * SIZE];
-            let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
-            f01dd - f10dd
-        },
-        State::F5 => {
-            let f11ud = par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE];
-            let f11du = par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE];
-            let g1 = par.gi[1];
-            let v = par.vij[0];
-            (f11ud - f11du) * <f64>::exp(g1 - v)
-        },
-        State::F6 => {
-            let f10ud = par.fij[1 + 0 * SIZE + 1 * SIZE * SIZE];
-            let f01du = par.fij[0 + 1 * SIZE + 2 * SIZE * SIZE];
-            f10ud - f01du
-        },
-        State::F9 => {
-            let f01ud = par.fij[0 + 1 * SIZE + 1 * SIZE * SIZE];
-            let f10du = par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
-            f01ud - f10du
-        },
-        State::F10 => {
-            let f00ud = par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE];
-            let f00du = par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE];
-            let g0 = par.gi[0];
-            let v = par.vij[0];
-            (f00ud - f00du) * <f64>::exp(g0 - v)
-        },
-        State::F12 => {
-            let f01uu = par.fij[0 + 1 * SIZE + 0 * SIZE * SIZE];
-            let f10uu = par.fij[1 + 0 * SIZE + 0 * SIZE * SIZE];
-            f01uu - f10uu
-        },
-    }
 }
 
 fn energy_individual_state(state: &State, par: &VarParams) -> f64 {
@@ -244,43 +243,6 @@ fn analytic(par: &VarParams) -> f64 {
     d + e + f
 }
 
-fn analytic_derivatives_expval(par: &VarParams) -> Vec<f64> {
-    let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
-    out_der[0] = sq(individual_state(&State::F10, par));
-    out_der[1] = sq(individual_state(&State::F5, par));
-    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
-    //out_der[3] =
-    //out_der[4] =
-    //out_der[5] =
-    //out_der[6] =
-    out_der[7] = {
-        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
-            * sq(individual_state(&State::F10, par))
-    };
-    out_der[8] = individual_state(&State::F6, par);
-    out_der[9] = individual_state(&State::F9, par);
-    out_der[10] = {
-        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
-            * sq(individual_state(&State::F5, par))
-    };
-    out_der[11] = - {
-        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
-            * sq(individual_state(&State::F10, par))
-    };
-    out_der[12] = - individual_state(&State::F9, par);
-    out_der[13] = - individual_state(&State::F6, par);
-    out_der[14] = - {
-        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
-            * sq(individual_state(&State::F5, par))
-    };
-    //out_der[3] =
-    //out_der[4] =
-    //out_der[5] =
-    //out_der[6] =
-
-    out_der
-}
-
 fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
     let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
     out_der[0] = individual_state(&State::F10, par)
@@ -292,35 +254,38 @@ fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
     //out_der[4] =
     //out_der[5] =
     //out_der[6] =
-    out_der[7] = {
+    out_der[3] = 1.0 * {
         <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
             * individual_state(&State::F10, par)
             * energy_individual_state(&State::F10, par)
     };
-    out_der[8] = energy_individual_state(&State::F6, par);
-    out_der[9] = energy_individual_state(&State::F9, par);
-    out_der[10] = {
+    out_der[4] = 1.0 * energy_individual_state(&State::F6, par);
+    out_der[5] = 1.0 * energy_individual_state(&State::F9, par);
+    out_der[6] = 1.0 * {
         <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
             * individual_state(&State::F5, par)
             * energy_individual_state(&State::F5, par)
     };
-    out_der[11] = - {
-        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
-            * individual_state(&State::F10, par)
-                * energy_individual_state(&State::F10, par)
-    };
-    out_der[12] = - energy_individual_state(&State::F9, par);
-    out_der[13] = - energy_individual_state(&State::F6, par);
-    out_der[14] = - {
-        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
-            * individual_state(&State::F5, par)
-            * energy_individual_state(&State::F5, par)
-    };
-    //out_der[3] =
-    //out_der[4] =
-    //out_der[5] =
-    //out_der[6] =
 
+    out_der
+}
+
+fn analytic_derivatives_expval(par: &VarParams) -> Vec<f64> {
+    let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
+    out_der[0] = sq(individual_state(&State::F10, par));
+    out_der[1] = sq(individual_state(&State::F5, par));
+    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
+    // fij
+    out_der[3] = 1.0 * {
+        <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)
+            * sq(individual_state(&State::F10, par))
+    };
+    out_der[4] = 1.0 * individual_state(&State::F6, par);
+    out_der[5] = 1.0 * individual_state(&State::F9, par);
+    out_der[6] = 1.0 * {
+        <f64>::exp(par.gi[1] - par.vij[0]) / individual_state(&State::F5, par)
+            * sq(individual_state(&State::F5, par))
+    };
     out_der
 }
 
@@ -332,12 +297,12 @@ fn print_der(der1: &[f64], der2: &[f64], npar: usize) {
 }
 
 
+
 #[test]
 fn comupte_energy_from_all_states() {
     //let mut statesfp = File::create("states").unwrap();
     //let mut energyfp = File::create("energy").unwrap();
     env_logger::init();
-    let mut rng = SmallRng::seed_from_u64(42u64);
     //let mut rng = thread_rng();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
     println!("bitmasks: {:?}", bitmask);
@@ -347,7 +312,7 @@ fn comupte_energy_from_all_states() {
         array_size: (SIZE + 7) / 8,
         cons_t: CONS_T,
         cons_u: CONS_U,
-        nfij: NFIJ,
+        nfij: SIZE*SIZE,
         nvij: NVIJ,
         ngi: NGI,
         mcsample_interval: 1,
@@ -363,12 +328,12 @@ fn comupte_energy_from_all_states() {
     };
     let mut fij = [
         0.0, 0.0, 0.0, 0.0,
-        0.41, -0.18, 0.11, 0.84,
+        1.093500753438337580e-01, 3.768419990611672210e-01, 3.769186909982900624e-01, 3.322533463612635796e-01,
         0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0,
     ];
-    let mut vij = [0.3];
-    let mut gi = [-0.7, -0.5];
+    let mut vij = [5.079558854017672820e-01];
+    let mut gi = [3.016937239100276336e-01, -8.096496093117950821e-01];
     println!("fij: {:?}", fij);
     println!("vij: {:?}", vij);
     println!("gi: {:?}", gi);
@@ -423,6 +388,7 @@ fn comupte_energy_from_all_states() {
         energy_individual_state(&states_names[i], &parameters), 1e-12);
     }
     close(mean_energy, analytic(&parameters), 1e-12);
+    mean_energy = mean_energy / norm(&parameters);
     let mut otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
     let mut expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
     let mut expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
@@ -440,44 +406,59 @@ fn comupte_energy_from_all_states() {
         jas_off: NGI,
         epsilon: 0.0,
     };
-    let initial_state: FockState<u8> = {
-        let mut tmp: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-        while tmp.spin_up.count_ones() != tmp.spin_down.count_ones() {
-            tmp = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-        }
-        tmp
+    let mut otilde_pair: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
+    let mut expvalo_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let mut expval_ho_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let mut visited_pair: Vec<usize> = vec![0; NMCSAMP];
+    let mut der_pair = DerivativeOperator {
+        o_tilde: &mut otilde_pair,
+        expval_o: &mut expvalo_pair,
+        ho: &mut expval_ho_pair,
+        n: (sys.size*sys.size + NVIJ + NGI) as i32,
+        nsamp: NMCSAMP as f64,
+        nsamp_int: 1,
+        mu: -1,
+        visited: &mut visited_pair,
+        pfaff_off: NGI + NVIJ,
+        jas_off: NGI,
+        epsilon: 0.0,
     };
 
-    let (mc_mean_energy, accumulated_states, error, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
-    let mut out_str: String = String::new();
-    for s in accumulated_states.iter() {
-        out_str.push_str(&format!("{}\n", s));
-    }
+    let mean_energy_es = compute_mean_energy_exact(&parameters, &sys, &mut der);
+    der_pair.mu = der.mu;
+    //for s in accumulated_states.iter() {
+    //    out_str.push_str(&format!("{}\n", s));
+    //}
     //statesfp.write(out_str.as_bytes()).unwrap();
 
-    println!("Correlation time: {}", cor);
+    //println!("Correlation time: {}", cor);
+    //let error = <f64>::sqrt((1.0 + 2.0 * cor) / (NMCSAMP as f64));
     let mut energy_str: String = String::new();
-    energy_str.push_str(&format!("{} {} {}\n", mean_energy, mc_mean_energy, error));
+    energy_str.push_str(&format!("{} {}\n", mean_energy, mean_energy_es));
     //energyfp.write(energy_str.as_bytes()).unwrap();
-    println!("Comparing monte-carlo energy, tol: {}", error);
-    mean_energy = mean_energy / norm(&parameters);
-    println!("Monte-Carlo: {}, Analytic: {}", mc_mean_energy, mean_energy);
-    close(mc_mean_energy, mean_energy, mean_energy * 1e-2);
+    //println!("Comparing monte-carlo energy, tol: {}", error);
+    println!("Monte-Carlo: {}, Analytic: {}", mean_energy_es, mean_energy);
+    close(mean_energy_es, mean_energy, 1e-16);
+    mapto_pairwf(&der, &mut der_pair, &sys);
 
     // Test derivatives
     let exp_val = analytic_derivatives_expval(&parameters);
-    print_der(der.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
+    println!("Checking <O>");
+    print_der(der_pair.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
-        close(der.expval_o[i] * psi, exp_val[i], 1e-2);
+        println!("{} == {}, tol = {}", der_pair.expval_o[i], exp_val[i] / psi, 1e-12);
+        close(der_pair.expval_o[i], exp_val[i] / psi, 1e-12);
     }
 
     let exp_val_ho = analytic_ho_expval(&parameters);
-    print_der(der.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
+    println!("Checking <HO>");
+    print_der(der_pair.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
-        close(der.ho[i] * psi, exp_val_ho[i], 2e-2);
+        println!("{} == {},  tol = {}", der_pair.ho[i], exp_val_ho[i] / psi, 1e-12);
+        close(der_pair.ho[i], exp_val_ho[i] / psi, 1e-12);
     }
 }

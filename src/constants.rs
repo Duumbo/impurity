@@ -16,10 +16,12 @@ pub struct SysParams<'a> {
     pub hopping_bitmask: &'a [SpinState],
     pub nmcwarmup: usize,
     pub nmcsample: usize,
+    pub nbootstrap: usize,
     pub mcsample_interval: usize,
     pub clean_update_frequency: usize,
     pub tolerance_singularity: f64,
     pub tolerance_sherman_morrison: f64,
+    pub pair_wavefunction: bool,
 }
 
 pub type BitStruct = u8;

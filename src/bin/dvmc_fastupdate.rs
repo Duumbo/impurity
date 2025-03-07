@@ -5,20 +5,21 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
-use impurity::optimisation::conjugate_gradiant;
+use impurity::optimisation::{exact_overlap_inverse, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
-const SEED: u64 = 1434;
+const SEED: u64 = 14345;
 const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
-const NVIJ: usize = SIZE*SIZE;
+const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
 const NMCSAMP: usize = 10_000;
+const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
-const MCSAMPLE_INTERVAL: usize = 2;
+const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 6;
 const CLEAN_UPDATE_FREQUENCY: usize = 2;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
@@ -26,9 +27,11 @@ const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
 const CONS_T: f64 = -1.0;
 const EPSILON_CG: f64 = 1e-16;
-const EPSILON_SPREAD: f64 = 0.0;
+const EPSILON_SPREAD: f64 = 0.01;
 const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const NOPTITER: usize = 1_000;
+const _KMAX: usize = NMCSAMP;
+const PARAMTHRESHOLD: f64 = 0.5;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0,
@@ -57,7 +60,7 @@ fn norm(par: &VarParams) -> f64 {
     let f10dd = par.fij[1 + 0 * SIZE + 3 * SIZE * SIZE];
     let g0 = par.gi[0];
     let g1 = par.gi[1];
-    let v = par.vij[1];
+    let v = par.vij[0];
     let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
     let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
     let c = sq(<f64>::abs(f01uu - f10uu));
@@ -74,17 +77,17 @@ fn mean_energy_analytic_2sites(par: &VarParams, _sys: &SysParams) -> f64 {
         - par.fij[1 + 0 * SIZE + 2 * SIZE * SIZE];
     let b = (par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[0]-par.vij[1]);
+        * <f64>::exp(par.gi[0]-par.vij[0]);
     let c = (par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(par.gi[1]-par.vij[1]);
+        * <f64>::exp(par.gi[1]-par.vij[0]);
     let d = 2.0 * CONS_T * (b + c) * a;
     let e = sq(par.fij[1 + 1 * SIZE + 1 * SIZE * SIZE]
         - par.fij[1 + 1 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[1]-2.0*par.vij[0]) * CONS_U;
     let f = sq(par.fij[0 + 0 * SIZE + 1 * SIZE * SIZE]
         - par.fij[0 + 0 * SIZE + 2 * SIZE * SIZE])
-        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[1]) * CONS_U;
+        * <f64>::exp(2.0*par.gi[0]-2.0*par.vij[0]) * CONS_U;
     (d + e + f) / norm(par)
 }
 
@@ -108,7 +111,7 @@ fn log_system_parameters(e: f64, ae: f64, corr_time: f64, fp: &mut File, params:
         let a = format!("{:+>.05e} ", fij[i]);
         params.push_str(&a);
     }
-    for i in 0..SIZE*SIZE {
+    for i in 0..NVIJ {
         let a = format!("{:+>.05e} ", vij[i]);
         params.push_str(&a);
     }
@@ -136,6 +139,7 @@ fn zero_out_derivatives(der: &mut DerivativeOperator) {
 
 fn main() {
     let mut fp = File::create("params").unwrap();
+    writeln!(fp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
     let mut statesfp = File::create("states").unwrap();
     let mut save: bool = true;
     // Initialize logger
@@ -154,14 +158,20 @@ fn main() {
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcsample: NMCSAMP,
+        nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
-        tolerance_singularity: TOLERENCE_SINGULARITY
+        tolerance_singularity: TOLERENCE_SINGULARITY,
+        pair_wavefunction: false,
     };
 
     let mut rng = Mt64::new(SEED);
     //let parameters = generate_random_params(&mut rng);
+    //let mut all_params = Vec::with_capacity(NGI + NVIJ + NFIJ);
+    //for i in 0..(NGI + NVIJ + NFIJ) {
+    //    all_params.push(rng.gen());
+    //}
     //let mut all_params = vec![
     //    -1.0, -1.0, -1.0, -1.0,
     //    0.0, 2.0, 2.0, 2.0,
@@ -227,10 +237,7 @@ fn main() {
     let mut all_params = vec![
          2.992823494391085859e-01,
         -8.118842052166648227e-01,
-        0.0,
         -5.126018557775564588e-01,
-        -5.126018557775564588e-01,
-        0.0,
         //0.000000000000000000e+00,
         0.0, 0.0, 0.0, 0.0,
         1.085729148576013436e-01,
@@ -292,7 +299,7 @@ fn main() {
     .progress_chars("##-"));
 
     for opt_iter in 0..NOPTITER {
-        let (mean_energy, accumulated_states, correlation_time) = {
+        let (mean_energy, accumulated_states, correlation_time, _) = {
             compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative)
         };
         if save {
@@ -313,21 +320,19 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            dscal(derivative.n, 1.0 / (NMCSAMP as f64), derivative.ho, incx);
-            dscal(derivative.n, 1.0 / (NMCSAMP as f64), derivative.expval_o, incx);
             daxpy(derivative.n, -mean_energy, derivative.expval_o, incx, derivative.ho, incy);
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }
-        //spread_eigenvalues(&mut derivative);
-        conjugate_gradiant(&derivative, &mut b, &mut x0, EPSILON_CG, 4, NPARAMS as i32);
+        spread_eigenvalues(&mut derivative);
+        exact_overlap_inverse(&derivative, &mut b, EPSILON_CG, NPARAMS as i32, PARAMTHRESHOLD);
         info!("Need to update parameters with: {:?}", x0);
         unsafe {
             let incx = 1;
             let incy = 1;
             let alpha = - OPTIMISATION_TIME_STEP;
-            daxpy(NGI as i32, alpha, &x0, incx, &mut parameters.gi, incy);
-            daxpy(NVIJ as i32, alpha, &x0[NGI..NPARAMS], incx, &mut parameters.vij, incy);
-            daxpy(NFIJ as i32, alpha, &x0[NGI + NVIJ..NPARAMS], incx, &mut parameters.fij, incy);
+            daxpy(NGI as i32, alpha, &b, incx, &mut parameters.gi, incy);
+            daxpy(NVIJ as i32, alpha, &b[NGI..NPARAMS], incx, &mut parameters.vij, incy);
+            daxpy(NFIJ as i32, alpha, &b[NGI + NVIJ..NPARAMS], incx, &mut parameters.fij, incy);
         }
         info!("Correctly finished optimisation iteration {}", opt_iter);
         // Sorella Louche stuff
@@ -361,7 +366,6 @@ fn main() {
             parameters.vij[i] -= shift;
         }
         // HARD CODE vij = vji
-        parameters.vij[1] = parameters.vij[2];
         // Slater Rescaling
         unsafe {
             let incx = 1;

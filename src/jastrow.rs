@@ -48,9 +48,17 @@ where
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
-                jastrow_out -= jastrow_params[i + k * n_sites];
+                if i > k {
+                    jastrow_out -= jastrow_params[i*(i-1)/2 + k];
+                } else {
+                    jastrow_out -= jastrow_params[k*(k-1)/2 + i];
+                }
             } else {
-                jastrow_out += jastrow_params[i + k * n_sites];
+                if i > k {
+                    jastrow_out += jastrow_params[i*(i-1)/2 + k];
+                } else {
+                    jastrow_out += jastrow_params[k*(k-1)/2 + i];
+                }
             }
         }
         i = regular_nor.leading_zeros() as usize;
@@ -78,9 +86,17 @@ where
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
-                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * der.mu) as usize] = -0.5;
+                if k > i {
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -0.5;
+                } else {
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -0.5;
+                }
             } else {
-                der.o_tilde[der.jas_off + i + k * n_sites + (der.n * der.mu) as usize] = 0.5;
+                if k > i {
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 0.5;
+                } else {
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 0.5;
+                }
             }
         }
         i = regular_nor.leading_zeros() as usize;
@@ -110,9 +126,17 @@ fn jastrow_undo_update<T>(
             }
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             if n1.check(i) ^ n2.check(index_j) {
-                *previous_jas += jastrow_params[i + index_j * n_sites];
+                if i > index_j {
+                    *previous_jas += jastrow_params[i*(i-1)/2 + index_j];
+                } else {
+                    *previous_jas += jastrow_params[index_j*(index_j-1)/2 + i];
+                }
             } else {
-                *previous_jas -= jastrow_params[i + index_j * n_sites];
+                if i > index_j {
+                    *previous_jas -= jastrow_params[i*(i-1)/2 + index_j];
+                } else {
+                    *previous_jas -= jastrow_params[index_j*(index_j-1)/2 + i];
+                }
             }
             i = spin_mask.leading_zeros() as usize;
         }
@@ -141,9 +165,17 @@ fn jastrow_do_update<T>(
             }
             let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
             if n1.check(i) ^ n2.check(index_j) {
-                *previous_jas -= jastrow_params[i + index_j * n_sites];
+                if i > index_j {
+                    *previous_jas -= jastrow_params[i*(i-1)/2 + index_j];
+                } else {
+                    *previous_jas -= jastrow_params[index_j*(index_j-1)/2 + i];
+                }
             } else {
-                *previous_jas += jastrow_params[i + index_j * n_sites];
+                if i > index_j {
+                    *previous_jas += jastrow_params[i*(i-1)/2 + index_j];
+                } else {
+                    *previous_jas += jastrow_params[index_j*(index_j-1)/2 + i];
+                }
             }
             i = spin_mask.leading_zeros() as usize;
         }
@@ -159,23 +191,38 @@ fn jastrow_single_update<T>(
     index_j: usize,
     index_i: usize,
     sign: bool,
-    n_sites: usize,
 ) where
     T: BitOps,
 {
     if spin_mask.check(index_j) & spin_mask.check(index_i) {
         let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
-        if n1.check(index_i) ^ n2.check(index_j) {
-            if sign {
-                *previous_jas -= jastrow_params[index_i + index_j * n_sites];
+        if index_j > index_i {
+            if n1.check(index_i) ^ n2.check(index_j) {
+                if sign {
+                    *previous_jas -= jastrow_params[index_j*(index_j-1)/2 + index_i];
+                } else {
+                    *previous_jas += jastrow_params[index_j*(index_j-1)/2 + index_i];
+                }
             } else {
-                *previous_jas += jastrow_params[index_i + index_j * n_sites];
+                if sign {
+                    *previous_jas += jastrow_params[index_j*(index_j-1)/2 + index_i];
+                } else {
+                    *previous_jas -= jastrow_params[index_j*(index_j-1)/2 + index_i];
+                }
             }
         } else {
-            if sign {
-                *previous_jas += jastrow_params[index_i + index_j * n_sites];
+            if n1.check(index_i) ^ n2.check(index_j) {
+                if sign {
+                    *previous_jas -= jastrow_params[index_i*(index_i-1)/2 + index_j];
+                } else {
+                    *previous_jas += jastrow_params[index_i*(index_i-1)/2 + index_j];
+                }
             } else {
-                *previous_jas -= jastrow_params[index_i + index_j * n_sites];
+                if sign {
+                    *previous_jas += jastrow_params[index_i*(index_i-1)/2 + index_j];
+                } else {
+                    *previous_jas -= jastrow_params[index_i*(index_i-1)/2 + index_j];
+                }
             }
         }
     }
@@ -260,7 +307,6 @@ pub fn fast_update_jastrow<T>(
         new_j,
         previous_j,
         false,
-        n_sites,
     );
 
     // Now do
@@ -292,7 +338,6 @@ pub fn fast_update_jastrow<T>(
         new_j,
         previous_j,
         true,
-        n_sites,
     );
 }
 
@@ -467,6 +512,7 @@ mod test {
         const SIZE: usize = 8;
         let mut rng = SmallRng::seed_from_u64(42);
         const NSITES: usize = 8;
+        const NVIJ: usize = NSITES * (NSITES - 1) / 2;
         for _ in 0..100 {
             let up = rng.gen::<u8>();
             let down = rng.gen::<u8>();
@@ -480,19 +526,22 @@ mod test {
                 spin_down: down,
                 n_sites: SIZE,
             };
-            let mut jastrow_params: Vec<f64> = Vec::with_capacity(SIZE * SIZE);
+            let mut jastrow_params: Vec<f64> = Vec::with_capacity(NVIJ);
+            let mut jastrow_params_all: Vec<f64> = vec![0.0; NSITES * NSITES];
             for _ in 0..SIZE * SIZE {
                 jastrow_params.push(rng.gen::<f64>());
             }
-            for i in 0..NSITES {
-                for j in 0..NSITES {
-                    jastrow_params[j + i * NSITES] = jastrow_params[i + j * NSITES];
-                    if i == j {jastrow_params[i + j* NSITES] = 0.0;}
+            for j in 0..NSITES {
+                for i in 0..j {
+                    jastrow_params_all[i + j * NSITES] = jastrow_params[(j - 1) * j / 2 + i];
+                    jastrow_params_all[j + i * NSITES] = jastrow_params[(j - 1) * j / 2 + i];
                 }
             }
+            println!("vij = {:?}", jastrow_params_all);
+            println!("closely packed vij = {:?}", jastrow_params);
             close(
                 compute_jastrow_exp(fock_state1, &jastrow_params, NSITES),
-                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, NSITES),
+                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params_all, NSITES),
                 1e-12,
             )
         }
@@ -501,6 +550,7 @@ mod test {
     #[test]
     fn test_fast_update_jastrow_u8() {
         const SIZE: usize = 8;
+        const NVIJ: usize = SIZE * (SIZE - 1) / 2;
         let mut rng = SmallRng::seed_from_u64(42);
         let mut up = rng.gen::<u8>();
         let down = rng.gen::<u8>();
@@ -509,16 +559,11 @@ mod test {
             spin_down: down,
             n_sites: SIZE,
         };
-        let mut jastrow_params: Vec<f64> = Vec::with_capacity(64);
-        for _ in 0..64 {
+        let mut jastrow_params: Vec<f64> = Vec::with_capacity(NVIJ);
+        for _ in 0..NVIJ {
             jastrow_params.push(rng.gen());
         }
-        for i in 0..8 {
-            for j in 0..8 {
-                jastrow_params[j + i * 8] = jastrow_params[i + j * 8];
-            }
-        }
-        let mut jastrow = compute_jastrow_exp(fock_state.clone(), &jastrow_params, 8);
+        let mut jastrow = compute_jastrow_exp(fock_state.clone(), &jastrow_params, SIZE);
         println!("previous_jas: {}", jastrow);
         for _ in 0..100 {
             let spin_update: f64 = rng.gen();
@@ -564,6 +609,7 @@ mod test {
     fn test_jastrow_u8_5sites() {
         let mut rng = SmallRng::seed_from_u64(42);
         const NSITES: usize = 5;
+        const NVIJ: usize = NSITES * (NSITES - 1) / 2;
         for _ in 0..100 {
             // Generate random state
             let mut fock_state1 = rng.gen::<FockState<u8>>();
@@ -573,20 +619,24 @@ mod test {
             // Copy the state
             let fock_state2 = fock_state1.clone();
 
-            let mut jastrow_params: Vec<f64> = Vec::with_capacity(NSITES * NSITES);
-            for _ in 0..(NSITES * NSITES) {
+            let mut jastrow_params: Vec<f64> = Vec::with_capacity(NVIJ);
+            let mut jastrow_params_all: Vec<f64> = vec![0.0; NSITES * NSITES];
+            for _ in 0..NVIJ {
                 jastrow_params.push(rng.gen::<f64>());
             }
             for i in 0..NSITES {
-                for j in 0..NSITES {
-                    jastrow_params[j + i * NSITES] = jastrow_params[i + j * NSITES];
-                    if i == j {jastrow_params[i + j* NSITES] = 0.0;}
+                for j in i+1..NSITES {
+                    if i == j { continue;}
+                    jastrow_params_all[i + j * NSITES] = jastrow_params[(j - 1) * j / 2 + i];
+                    jastrow_params_all[j + i * NSITES] = jastrow_params[(j - 1) * j / 2 + i];
                 }
             }
-            println!("Params: {:?}", jastrow_params);
+            println!("vij = {:?}", jastrow_params_all);
+            println!("nvij = {}", jastrow_params_all.len());
+            println!("closely packed vij = {:?}", jastrow_params);
             close(
                 compute_jastrow_exp(fock_state1, &jastrow_params, NSITES),
-                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params, NSITES),
+                compute_jastrow_easy_to_follow(fock_state2, &jastrow_params_all, NSITES),
                 1e-12,
             )
         }

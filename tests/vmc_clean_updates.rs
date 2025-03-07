@@ -1,5 +1,3 @@
-use std::ptr::addr_of;
-use std::slice::from_raw_parts as slice;
 use log::info;
 use assert::close;
 
@@ -82,6 +80,7 @@ fn monte_carlo_first_iteration() {
         nvij: NVIJ,
         ngi: NGI,
         mcsample_interval: 1,
+        nbootstrap: 1,
         transfert_matrix: &HOPPINGS,
         hopping_bitmask: &bitmask,
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
@@ -89,6 +88,7 @@ fn monte_carlo_first_iteration() {
         nmcsample: NMCSAMP,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERANCE_SINGULARITY,
+        pair_wavefunction: false,
     };
     log_system_parameters(&sys);
 
@@ -173,7 +173,7 @@ fn monte_carlo_first_iteration() {
     info!("Initial Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
     info!("Nsites: {}", state.n_sites);
 
-    let (energy, _, _) = compute_mean_energy(&mut rng, state, &parameters, &sys, &mut der);
+    let (energy, _, _, _) = compute_mean_energy(&mut rng, state, &parameters, &sys, &mut der);
     close(energy, -0.35, MONTE_CARLO_CONVERGENCE_TOLERANCE);
     close(energy, mean_energy_analytic_2sites(&parameters, &sys), MONTE_CARLO_CONVERGENCE_TOLERANCE);
 }

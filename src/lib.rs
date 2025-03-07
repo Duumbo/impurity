@@ -1,6 +1,8 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
+use blas::{dcopy, dgemm};
+
 /// Input file parsing util.
 /// # Subfiles
 /// * __`orbitale.csv`__ - Variationnal parameters for the orbital. In csv
@@ -78,10 +80,10 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
         let mut expval = "<O> = ".to_owned();
         let mut ho = "<HO> = ".to_owned();
         let mut o_tilde = "O = ".to_owned();
-        for mu in 0..(self.mu + 1) as usize {
-            expval.push_str(&format!("{:>width$.04e} ", self.expval_o[mu]));
-            ho.push_str(&format!("{:>width$.04e} ", self.ho[mu]));
-            for n in 0..self.n as usize {
+        for n in 0..self.n as usize {
+            expval.push_str(&format!("{:>width$.04e} ", self.expval_o[n]));
+            ho.push_str(&format!("{:>width$.04e} ", self.ho[n]));
+            for mu in 0..(self.mu + 1) as usize {
                 o_tilde.push_str(&format!("{:>width$.04e}", self.o_tilde[n + n * mu]));
             }
             o_tilde.push_str("\n");
@@ -95,6 +97,118 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
         write!(f, "mu = {}", self.mu)?;
         Ok(())
 
+    }
+}
+
+
+fn _save_otilde(der: &DerivativeOperator) {
+    let width = 16;
+    let mut c = vec![0.0; (der.n * der.n) as usize];
+    println!("dim = {}", der.n * der.n);
+    unsafe {
+        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, der.o_tilde, der.n, der.o_tilde, der.n, 0.0, &mut c, der.n);
+    }
+    let mut outstr = "".to_owned();
+    outstr.push_str(&format!("<O_kO_m> = "));
+    for i in 0..der.n as usize {
+        outstr.push_str(&format!("\n           "));
+        for j in 0..der.n as usize {
+            outstr.push_str(&format!("{:>width$.04e}", c[i + der.n as usize * j]));
+        }
+    }
+    println!("{}", outstr);
+}
+
+pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator, sys: &SysParams) {
+    if input.mu != output.mu {
+        error!("Input dimension does not match output dimension. Make sure to match mu for both structures.");
+        panic!("Undefined Behavior.");
+    }
+    if input.mu < 0 {
+        error!("Dimension cannot be negative; is it empty?");
+        panic!("Undefined Behavior");
+    }
+    let nfij = sys.size*sys.size;
+    // Copy and scale fij from FIJ
+    for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
+        unsafe {
+            //println!("{}", output.mu);
+            dcopy(
+                input.mu,
+                &input.o_tilde[i..input.n as usize + input.mu as usize * (i + 1)],
+                input.n,
+                &mut output.o_tilde[(i - nfij)..output.n as usize + output.mu as usize * (i - nfij + 1)],
+                output.n
+            );
+            //for j in 0..nfij {
+            //    dscal(
+            //        output.mu,
+            //        der_facteur,
+            //        &mut output.o_tilde[j+sys.ngi+sys.nvij..output.n as usize + output.mu as usize * (j + 1 + sys.ngi + sys.nvij)],
+            //        output.n,
+            //    )
+            //}
+        }
+
+    }
+    // Copy Gutzwiller and jastrow
+    for i in 0..sys.ngi+sys.nvij {
+        unsafe {
+            dcopy(
+                input.mu,
+                &input.o_tilde[i..input.n as usize * (i + 1)],
+                input.n,
+                &mut output.o_tilde[i..output.n as usize * (i + 1)],
+                output.n
+            );
+        }
+
+    }
+    unsafe {
+        dcopy(
+            nfij as i32,
+            &input.expval_o[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
+            1,
+            &mut output.expval_o[input.pfaff_off..output.pfaff_off + nfij],
+            1
+        );
+        dcopy(
+            nfij as i32,
+            &input.ho[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
+            1,
+            &mut output.ho[input.pfaff_off..input.pfaff_off + nfij],
+            1
+        );
+        //dscal(nfij as i32, der_facteur, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
+        //dscal(nfij as i32, der_facteur, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
+        dcopy(
+            sys.nvij as i32,
+            &input.expval_o[input.jas_off..input.jas_off + sys.nvij],
+            1,
+            &mut output.expval_o[output.jas_off..output.jas_off + sys.nvij],
+            1
+        );
+        dcopy(
+            sys.nvij as i32,
+            &input.ho[input.jas_off..input.jas_off + sys.nvij],
+            1,
+            &mut output.ho[output.jas_off..output.jas_off + sys.nvij],
+            1
+        );
+        dcopy(
+            sys.ngi as i32,
+            &input.expval_o[0..sys.ngi],
+            1,
+            &mut output.expval_o[0..sys.ngi],
+            1
+        );
+        dcopy(
+            sys.ngi as i32,
+            &input.ho[0..sys.ngi],
+            1,
+            &mut output.ho[0..sys.ngi],
+            1
+        );
     }
 }
 
