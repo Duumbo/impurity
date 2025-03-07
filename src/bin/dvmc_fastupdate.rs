@@ -324,7 +324,7 @@ fn main() {
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }
         spread_eigenvalues(&mut derivative);
-        exact_overlap_inverse(&derivative, &mut b, &mut x0, EPSILON_CG, NPARAMS as i32, PARAMTHRESHOLD);
+        exact_overlap_inverse(&derivative, &mut b, EPSILON_CG, NPARAMS as i32, PARAMTHRESHOLD);
         info!("Need to update parameters with: {:?}", x0);
         unsafe {
             let incx = 1;

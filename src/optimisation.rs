@@ -302,7 +302,7 @@ fn _compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f
     }
 }
 
-pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, dim: i32, thresh: f64) -> Vec<bool>{
+pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64, dim: i32, thresh: f64) -> Vec<bool>{
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
     //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));

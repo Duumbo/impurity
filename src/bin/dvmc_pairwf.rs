@@ -359,7 +359,7 @@ fn main() {
         let mut _flag: bool = true;
         let ignored_columns = match OPTIMISE_ENERGY_METHOD {
             EnergyOptimisationMethod::ExactInverse => {
-                exact_overlap_inverse(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD)
+                exact_overlap_inverse(&work_derivative, &mut b, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
                 conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG)
