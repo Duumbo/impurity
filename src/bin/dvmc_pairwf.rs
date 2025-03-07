@@ -42,12 +42,12 @@ const SET_EXPVALO_ZERO: bool = false;
 const COMPUTE_ENERGY_METHOD: EnergyComputationMethod = EnergyComputationMethod::MonteCarlo;
 const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ExactInverse;
 
-enum EnergyOptimisationMethod {
+pub enum EnergyOptimisationMethod {
     ExactInverse,
     ConjugateGradiant,
 }
 
-enum EnergyComputationMethod {
+pub enum EnergyComputationMethod {
     MonteCarlo,
     ExactSum,
 }
@@ -60,7 +60,7 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
     //0.0, 1.0, 1.0, 0.0
 ];
 
-fn print_delta_alpha(da: &[f64], ngi: usize, nvij: usize, nfij: usize) {
+fn _print_delta_alpha(da: &[f64], ngi: usize, nvij: usize, nfij: usize) {
     let mut outstr = "".to_owned();
     for i in 0..ngi {
         outstr.push_str(&format!(" G_{} = {}", i, da[i]));
@@ -74,7 +74,7 @@ fn print_delta_alpha(da: &[f64], ngi: usize, nvij: usize, nfij: usize) {
     println!("{}", outstr);
 }
 
-fn save_otilde(fp: &mut File, der: &DerivativeOperator) {
+fn _save_otilde(fp: &mut File, der: &DerivativeOperator) {
     let width = 16;
     let mut o_tilde = "".to_owned();
     for mu in 0..(der.mu + 1) as usize {
@@ -188,8 +188,6 @@ fn zero_out_derivatives(der: &mut DerivativeOperator) {
 fn main() {
     let mut fp = File::create("params").unwrap();
     writeln!(fp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
-    let mut der_fp = File::create("derivative").unwrap();
-    let mut wder_fp = File::create("work_derivative").unwrap();
     let mut _save: bool = true;
     // Initialize logger
     env_logger::init();
@@ -311,7 +309,7 @@ fn main() {
             match COMPUTE_ENERGY_METHOD {
                 EnergyComputationMethod::MonteCarlo => compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative),
                 EnergyComputationMethod::ExactSum => {
-                    (compute_mean_energy_exact(state, &parameters, &system_params, &mut derivative), Vec::with_capacity(0), 0.0, 0.0)
+                    (compute_mean_energy_exact(&parameters, &system_params, &mut derivative), Vec::with_capacity(0), 0.0, 0.0)
                 },
             }
         };
@@ -361,7 +359,7 @@ fn main() {
         let mut _flag: bool = true;
         let ignored_columns = match OPTIMISE_ENERGY_METHOD {
             EnergyOptimisationMethod::ExactInverse => {
-                exact_overlap_inverse(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD)
+                exact_overlap_inverse(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
                 conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG)

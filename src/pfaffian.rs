@@ -198,15 +198,6 @@ where
         }
     }
 
-    // Copy matrix for print TMP
-    let b = PfaffianState {
-        n_elec: n,
-        n_sites: state.n_sites,
-        inv_matrix: a.clone(),
-        indices: (indices.clone(), indices2.clone()),
-        pfaff: 0.0,
-    };
-    //println!("X = {}", b);
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
     invert_matrix(&mut a, n as i32);
@@ -282,7 +273,6 @@ pub fn get_pfaffian_ratio(
     new_i: usize,
     spin: Spin,
     fij: &[f64],
-    sys: &SysParams,
 ) -> (f64, Vec<f64>, usize) {
     // Rename
     let indx_up = &previous_pstate.indices.0;
@@ -383,7 +373,7 @@ fn replace_element(vec: &mut Vec<usize>, i: usize, j: usize) {
 /// be acquired from the function [[get_pfaffian_ratio]].
 /// * __`col`__ - The column and row in the matrix $A$ that changed. This is NOT
 /// correlated to the index of the electron.
-pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: Vec<f64>, col: usize, sys: &SysParams) {
+pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: Vec<f64>, col: usize) {
     // Rename and copy when necessary.
     trace!("Updating the inverse matrix.");
     match hop.2 {
@@ -763,10 +753,10 @@ mod tests {
             println!("Spin is up: {}", is_spin_up);
             let tmp =
                 if is_spin_up {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up, &params, &sys)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up, &params)
                 }
                 else {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down, &params, &sys)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down, &params)
                 };
             println!("Ratio: {}", tmp.0);
             println!("B col: {:?}", tmp.1);
@@ -776,7 +766,7 @@ mod tests {
             println!("Computed Pfaffian matches updated pfaffian.");
 
             println!("------------- Updated Inverse matrix ------------");
-            update_pstate(&mut pfstate, hop, tmp.1, tmp.2, &sys);
+            update_pstate(&mut pfstate, hop, tmp.1, tmp.2);
             println!("{}", pfstate);
             invert_matrix(&mut pfstate.inv_matrix, pfstate.n_elec as i32);
             invert_matrix(&mut pfstate2.inv_matrix, pfstate2.n_elec as i32);
@@ -889,7 +879,7 @@ mod tests {
         };
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
-        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, &params, &sys).0;
+        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, &params).0;
         close(pfstate.pfaff * pfaff_ratio, pfstate2.pfaff, 1e-12);
     }
 
@@ -967,7 +957,7 @@ mod tests {
         };
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params, &sys);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
         println!("B: {:?}", tmp.1);
         println!("Ratio: {}", tmp.0);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
@@ -1051,12 +1041,12 @@ mod tests {
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
         println!("------------- Proposed Update ------------------");
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params, &sys);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
         println!("Ratio: {}", tmp.0);
         println!("B col: {:?}", tmp.1);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
         println!("Computed Pfaffian matches updated pfaffian.");
-        update_pstate(&mut pfstate, hop, tmp.1, tmp.2, &sys);
+        update_pstate(&mut pfstate, hop, tmp.1, tmp.2);
         println!("------------- Updated Inverse matrix ------------");
         println!("{}", pfstate);
         for (good, test) in pfstate2.inv_matrix.iter().zip(pfstate.inv_matrix) {

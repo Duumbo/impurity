@@ -1,7 +1,7 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use blas::{dcopy, dscal, dgemm};
+use blas::{dcopy, dgemm};
 
 /// Input file parsing util.
 /// # Subfiles
@@ -101,7 +101,7 @@ impl<'a> std::fmt::Display for DerivativeOperator<'a> {
 }
 
 
-fn save_otilde(der: &DerivativeOperator) {
+fn _save_otilde(der: &DerivativeOperator) {
     let width = 16;
     let mut c = vec![0.0; (der.n * der.n) as usize];
     println!("dim = {}", der.n * der.n);
@@ -129,8 +129,6 @@ pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator,
         panic!("Undefined Behavior");
     }
     let nfij = sys.size*sys.size;
-    // DUmbo comprendre plus tart
-    let der_facteur = 1.0;
     // Copy and scale fij from FIJ
     for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
         unsafe {

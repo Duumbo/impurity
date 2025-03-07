@@ -191,7 +191,6 @@ fn jastrow_single_update<T>(
     index_j: usize,
     index_i: usize,
     sign: bool,
-    n_sites: usize,
 ) where
     T: BitOps,
 {
@@ -308,7 +307,6 @@ pub fn fast_update_jastrow<T>(
         new_j,
         previous_j,
         false,
-        n_sites,
     );
 
     // Now do
@@ -340,7 +338,6 @@ pub fn fast_update_jastrow<T>(
         new_j,
         previous_j,
         true,
-        n_sites,
     );
 }
 

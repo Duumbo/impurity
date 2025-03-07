@@ -58,7 +58,7 @@ where
             }
         };
         let mut proj = previous_proj;
-        let (ratio, _col, _colidx) = fast_internal_product_no_otilde(&state, &f_state, previous_pstate, &hop, &mut proj, params, sys);
+        let (ratio, _col, _colidx) = fast_internal_product_no_otilde(&state, &f_state, previous_pstate, &hop, &mut proj, params);
         let pfaff = previous_pstate.pfaff * ratio;
         let ip = pfaff * <f64>::exp(proj);
         trace!("Projection state: |x'> = {}, z = {}", f_state, ratio);

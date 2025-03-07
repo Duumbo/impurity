@@ -7,7 +7,7 @@ use std::io::Write;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
-use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams, Hopper};
+use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams};
 use crate::density::{compute_internal_product_parts, fast_internal_product};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
@@ -48,9 +48,9 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
 ) -> (f64, FockState<T>, Vec<f64>, usize)
     where Standard: Distribution<T>
 {
-    let state2 = state.generate_hopping(rng, sys.size as u32, hop, sys);
+    let state2 = state.generate_hopping(rng, sys.size as u32, hop);
     let (ratio_ip, updated_column, col_idx) = {
-        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params, sys)
+        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params)
     };
     (ratio_ip, state2, updated_column, col_idx)
 }
@@ -94,7 +94,7 @@ fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
     if *n < sys.clean_update_frequency {
         *state = *state2;
         *proj = *proj_copy;
-        update_pstate(pstate, *hop, col, colidx, sys);
+        update_pstate(pstate, *hop, col, colidx);
         *ratio_prod *= ratio;
     } else {
         let tmp_pfaff = pstate.pfaff;
@@ -234,7 +234,7 @@ fn sq(x: f64) -> f64
     x * x
 }
 
-pub fn compute_mean_energy_exact(initial_state: FockState<u8>, params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator) -> f64
+pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator) -> f64
 {
     if der.mu != -1 {
         error!("The derivative operator current row was mu = {} on entry, is it reinitialized?", der.mu);

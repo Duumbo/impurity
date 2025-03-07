@@ -1,5 +1,3 @@
-use std::ptr::addr_of;
-use std::slice::from_raw_parts as slice;
 use log::info;
 use assert::close;
 

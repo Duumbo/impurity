@@ -2,13 +2,11 @@ use assert::close;
 use blas::daxpy;
 use blas::dcopy;
 use impurity::monte_carlo::compute_mean_energy_exact;
-use rand::prelude::*;
 use impurity::gutzwiller::compute_gutzwiller_exp;
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::pfaffian::construct_matrix_a_from_state;
-use impurity::{generate_bitmask, mapto_pairwf, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
+use impurity::{generate_bitmask, mapto_pairwf, DerivativeOperator, FockState, SysParams, VarParams};
 use impurity::hamiltonian::{kinetic, potential};
-use impurity::optimisation::exact_overlap_inverse;
 
 // Number of sites
 const SIZE: usize = 2;
@@ -23,9 +21,9 @@ const NMCWARMUP: usize = 1000;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOL_SHERMAN: f64 = 1e-12;
 const TOL_SINGULARITY: f64 = 1e-12;
-const NOPTITER: usize = 100;
-const EPSILON_SHIFT: f64 = 0.01;
-const DT: f64 = -0.01;
+const _NOPTITER: usize = 100;
+const _EPSILON_SHIFT: f64 = 0.01;
+const _DT: f64 = -0.01;
 
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE-1)/2;
@@ -37,7 +35,7 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
 ];
 
 #[derive(Debug)]
-enum State {
+pub enum State {
     F3,
     F5,
     F6,
@@ -103,8 +101,8 @@ fn norm(par: &VarParams) -> f64 {
     let v = par.vij[0];
     let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
     let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
-    let c = sq(<f64>::abs(f01uu - f10uu));
-    let d = sq(<f64>::abs(f01dd - f10dd));
+    let _c = sq(<f64>::abs(f01uu - f10uu));
+    let _d = sq(<f64>::abs(f01dd - f10dd));
     let e = sq(<f64>::abs(f10ud - f01du));
     let f = sq(<f64>::abs(f01ud - f10du));
     a + b + e + f
@@ -309,7 +307,6 @@ fn comupte_energy_from_all_states() {
     //let mut statesfp = File::create("states").unwrap();
     //let mut energyfp = File::create("energy").unwrap();
     env_logger::init();
-    let mut rng = SmallRng::seed_from_u64(42u64);
     //let mut rng = thread_rng();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
     println!("bitmasks: {:?}", bitmask);
@@ -430,17 +427,9 @@ fn comupte_energy_from_all_states() {
         jas_off: NGI,
         epsilon: 0.0,
     };
-    let initial_state: FockState<u8> = {
-        let mut tmp: FockState<u8> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-        while tmp.spin_up.count_ones() != tmp.spin_down.count_ones() {
-            tmp = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
-        }
-        tmp
-    };
 
-    let mean_energy_es = compute_mean_energy_exact(initial_state, &parameters, &sys, &mut der);
+    let mean_energy_es = compute_mean_energy_exact(&parameters, &sys, &mut der);
     der_pair.mu = der.mu;
-    let mut out_str: String = String::new();
     //for s in accumulated_states.iter() {
     //    out_str.push_str(&format!("{}\n", s));
     //}

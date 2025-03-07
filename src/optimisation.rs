@@ -2,7 +2,6 @@ use blas::{daxpy, dcopy, ddot, dgemm, dgemv, dger, dscal};
 use lapack::dsyev;
 use log::{error, trace};
 use colored::Colorize;
-use std::fs::File;
 
 use crate::DerivativeOperator;
 
@@ -116,12 +115,12 @@ pub fn spread_eigenvalues(a: &mut DerivativeOperator) {
     }
 }
 
-fn prefilter_overlap_matrix(a: &DerivativeOperator, ignore_idx: &mut [bool], dim: i32, diag_threshold: f64) -> usize {
+fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], dim: i32, _diag_threshold: f64) -> usize {
     // Loop over diagonal elements of S_km
     // Reminder, S_{kk} = 1/N_{\rm MC.} \sum_\mu \tilde{O}^*_{k\mu}\tilde{O}^T_{\mu k} -
     // \Re{\expval{O_k}}^2
 
-    let mut skip_param_count: usize = 0;
+    let skip_param_count: usize = 0;
     let mut diag_elem = vec![0.0; dim as usize];
     for k in 0..dim as usize {
         // Start with 1/N_{\rm MC.} \sum_\mu \tilde{O}^*_{k\mu}\tilde{O}^T_{\mu k}
@@ -147,7 +146,6 @@ fn prefilter_overlap_matrix(a: &DerivativeOperator, ignore_idx: &mut [bool], dim
             max_elem = diag_elem[k];
         }
     }
-    let threshold = diag_threshold * max_elem;
     //for k in 0..dim as usize {
     //    if diag_elem[k] < threshold {
     //        skip_param_count += 1;
@@ -205,7 +203,7 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
     work
 }
 
-fn save_otilde(der: &[f64], mu: usize, n: usize) -> String {
+fn _save_otilde(der: &[f64], mu: usize, n: usize) -> String {
     let width = 16;
     let mut o_tilde = "".to_owned();
     for m in 0..mu {
@@ -269,8 +267,7 @@ fn compute_delta_from_eigenvalues(x0: &mut [f64], eigenvectors: &[f64], eigenval
     }
 }
 
-fn compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f64], dim: i32) {
-    let transa = b"T"[0];
+fn _compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f64], dim: i32) {
     let transb = b"T"[0];
     let incx = 1;
     let incy = 1;
@@ -305,12 +302,11 @@ fn compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f6
     }
 }
 
-pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64) -> Vec<bool>{
+pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, dim: i32, thresh: f64) -> Vec<bool>{
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
     //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
     let mut unfiltered_s = compute_s_explicit(a.o_tilde, a.expval_o, a.visited, dim, a.mu, a.nsamp, epsilon);
-    let mut s_copy = unfiltered_s.clone();
     //println!("dim = {}, Unfiltered S = ", dim);
     //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
     let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
@@ -364,7 +360,7 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f6
 
 /// Computes the solution of $A\mathbf{x}-\mathbf{b}=0$
 /// TODOC
-pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
+pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], _epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
 {
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
@@ -393,7 +389,6 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     //println!("eigenvalues: {:?}", eigenvalues);
 
     // Remove problematic eigenvalue
-    let mut fp = File::create("overlap").unwrap();
     //fp.write_all(save_otilde(&filtered_s, new_dim as usize, new_dim as usize).as_bytes()).unwrap();
     //println!("dim = {}, Filtered S = ", new_dim);
     //println!("{}", save_otilde(&filtered_s, new_dim as usize, new_dim as usize));

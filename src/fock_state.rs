@@ -556,7 +556,7 @@ impl<T: BitOps + std::fmt::Display> Distribution<FockState<T>> for Standard wher
 
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
-    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> Self;
+    fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> Self;
     fn generate_exchange<R: Rng + ?Sized>(self: &Self, rng: &mut R, out_idx: &mut (usize, usize)) -> Self;
 }
 
@@ -587,7 +587,7 @@ where T: BitOps,
     }
 
 
-    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin), sys: &SysParams) -> FockState<T> {
+    fn generate_hopping<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> FockState<T> {
         // This is cheap, don't sweat it
         //let all_hops = self.generate_all_hoppings(&sys.hopping_bitmask);
 
@@ -682,7 +682,6 @@ mod test {
     use super::*;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
-    type BitSize = u16;
 
     #[test]
     fn test_random_state_generator() {

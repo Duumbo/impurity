@@ -54,7 +54,6 @@ pub fn fast_internal_product_no_otilde<T>(
     hopping: &(usize, usize, Spin),
     previous_proj: &mut f64,
     params: &VarParams,
-    sys: &SysParams,
 ) -> (f64, Vec<f64>, usize)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
@@ -78,7 +77,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij, sys)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
     };
 
     // Combine to get the internal product.
@@ -94,7 +93,6 @@ pub fn fast_internal_product<T>(
     hopping: &(usize, usize, Spin),
     previous_proj: &mut f64,
     params: &VarParams,
-    sys: &SysParams,
 ) -> (f64, Vec<f64>, usize)
 where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
 {
@@ -118,7 +116,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij, sys)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
     };
 
     // Combine to get the internal product.

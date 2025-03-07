@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
 
-use impurity::optimisation::{conjugate_gradiant, exact_overlap_inverse, spread_eigenvalues};
+use impurity::optimisation::{exact_overlap_inverse, spread_eigenvalues};
 use impurity::{generate_bitmask, DerivativeOperator, FockState, RandomStateGeneration, SysParams, VarParams};
 use impurity::monte_carlo::compute_mean_energy;
 
@@ -30,7 +30,7 @@ const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SPREAD: f64 = 0.01;
 const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const NOPTITER: usize = 1_000;
-const KMAX: usize = NMCSAMP;
+const _KMAX: usize = NMCSAMP;
 const PARAMTHRESHOLD: f64 = 0.5;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
@@ -324,7 +324,7 @@ fn main() {
             dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
         }
         spread_eigenvalues(&mut derivative);
-        exact_overlap_inverse(&derivative, &mut b, &mut x0, EPSILON_CG, KMAX, NPARAMS as i32, PARAMTHRESHOLD);
+        exact_overlap_inverse(&derivative, &mut b, &mut x0, EPSILON_CG, NPARAMS as i32, PARAMTHRESHOLD);
         info!("Need to update parameters with: {:?}", x0);
         unsafe {
             let incx = 1;

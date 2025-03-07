@@ -31,7 +31,7 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
 ];
 
 #[derive(Debug)]
-enum State {
+pub enum State {
     F3,
     F5,
     F6,
@@ -58,8 +58,8 @@ fn norm(par: &VarParams) -> f64 {
     let v = par.vij[0];
     let a = <f64>::exp(2.0 * g0 - 2.0 * v)*sq(<f64>::abs(f00ud - f00du));
     let b = <f64>::exp(2.0 * g1 - 2.0 * v)*sq(<f64>::abs(f11ud - f11du));
-    let c = sq(<f64>::abs(f01uu - f10uu));
-    let d = sq(<f64>::abs(f01dd - f10dd));
+    let _c = sq(<f64>::abs(f01uu - f10uu));
+    let _d = sq(<f64>::abs(f01dd - f10dd));
     let e = sq(<f64>::abs(f10ud - f01du));
     let f = sq(<f64>::abs(f01ud - f10du));
     a + b + e + f
