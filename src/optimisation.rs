@@ -5,13 +5,13 @@ use colored::Colorize;
 
 use crate::DerivativeOperator;
 
-fn gradient(x: &[f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], b: &mut [f64], dim: i32, mu: i32, nsamp: f64) {
+fn gradient(x: &[f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], b: &mut [f64], epsilon: f64, dim: i32, mu: i32, nsamp: f64) {
     let alpha = -1.0;
     let incx = 1;
     let incy = 1;
     let mut work: Vec<f64> = vec![0.0; dim as usize];
     // Compute Ax
-    compute_w(&mut work, otilde, visited, expval_o, x, dim, mu, nsamp);
+    compute_w(&mut work, otilde, visited, expval_o, x, epsilon, dim, mu, nsamp);
     unsafe {
         // Compute b - Ax
         daxpy(dim, alpha, &work, incx, b, incy);
@@ -26,7 +26,7 @@ fn update_x(x: &mut [f64], pk: &[f64], alpha: f64, dim: i32) {
     };
 }
 
-fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], p: &[f64], dim: i32, mu: i32, nsamp: f64) {
+fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], p: &[f64], epsilon: f64, dim: i32, mu: i32, nsamp: f64) {
     // Computes Ap
     let incx = 1;
     let incy = 1;
@@ -38,6 +38,8 @@ fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64],
     unsafe {
         trace!("x_[n] = {:?}", p);
         trace!("mu = {}, n = {}", mu, dim);
+        // Copy p in w, so we can add epsilon*p to the result
+        dcopy(dim, p, incx, w, incy);
         // 80 misawa
         dgemv(b"T"[0], dim, mu, alpha, otilde, dim, p, incx, beta, &mut work, incy);
         for i in 0..mu as usize {
@@ -47,7 +49,7 @@ fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64],
         trace!("Len(work) = {}, a.n = {}, a.mu = {}", work.len(), dim, mu);
         trace!("~O_[0, mu] = {:?}", otilde.iter().step_by(mu as usize).copied().collect::<Vec<f64>>());
         // Sometimes segfaults
-        dgemv(b"N"[0], dim, mu, 1.0 / nsamp, otilde, dim, &work, incx, beta, w, incy);
+        dgemv(b"N"[0], dim, mu, 1.0 / nsamp, otilde, dim, &work, incx, epsilon, w, incy);
         trace!("O_[m, mu] O^[T]_[mu, n] x_[n] = {:?}", w);
         let alpha = ddot(dim, expval_o, incx, p, incy);
         // 81 misawa
@@ -360,7 +362,9 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
 
 /// Computes the solution of $A\mathbf{x}-\mathbf{b}=0$
 /// TODOC
-pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], _epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
+/// Output
+/// b is the optimised parameter step.
+pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
 {
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
@@ -408,7 +412,7 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
     //println!("Error threshold e = {}", e);
-    gradient(x0, &otilde, a.visited, &expvalo, b, new_dim as i32, a.mu, a.nsamp);
+    gradient(x0, &otilde, a.visited, &expvalo, b, epsilon, new_dim as i32, a.mu, a.nsamp);
     let mut p = vec![0.0; new_dim];
     let mut j: usize = 0;
     for i in 0..dim as usize {
@@ -428,7 +432,7 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         trace!("p_{} : {:?}", k, p);
         //println!("r_{} : {:?}", k, b);
         //println!("p_{} : {:?}", k, p);
-        compute_w(&mut w, &otilde, a.visited, &expvalo, &p, new_dim as i32, a.mu, a.nsamp);
+        compute_w(&mut w, &otilde, a.visited, &expvalo, &p, epsilon, new_dim as i32, a.mu, a.nsamp);
         //println!("w_{} : {:?}", k, w);
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
         trace!("alpha_{} : {}", k, alpha);
@@ -449,6 +453,9 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         }
         trace!("beta_{} : {}", k, beta);
         update_p(b, &mut p, beta, new_dim as i32);
+    }
+    unsafe {
+        dcopy(new_dim as i32, x0, 1, b, 1);
     }
     ignore
 }

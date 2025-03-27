@@ -16,7 +16,7 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1000;
+const NMCSAMP: usize = 100;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
 const MCSAMPLE_INTERVAL: usize = 1;
@@ -40,7 +40,7 @@ const OPTIMISE_JAST: bool = true;
 const OPTIMISE_ORB: bool = true;
 const SET_EXPVALO_ZERO: bool = false;
 const COMPUTE_ENERGY_METHOD: EnergyComputationMethod = EnergyComputationMethod::MonteCarlo;
-const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ExactInverse;
+const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ConjugateGradiant;
 
 pub enum EnergyOptimisationMethod {
     ExactInverse,
@@ -357,6 +357,13 @@ fn main() {
         //spread_eigenvalues(&mut derivative);
         //println!("x0 in = {:?}", x0);
         let mut _flag: bool = true;
+        let mut bcopy = b.clone();
+        //let ignored_columns = exact_overlap_inverse(&work_derivative, &mut bcopy, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD);
+        //conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG);
+        //println!("Exact b: {:?}", bcopy);
+        //println!("CG b: {:?}", b);
+        //panic!("Stop");
+        // Tmp to look at difference in CG and exact
         let ignored_columns = match OPTIMISE_ENERGY_METHOD {
             EnergyOptimisationMethod::ExactInverse => {
                 exact_overlap_inverse(&work_derivative, &mut b, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD)
