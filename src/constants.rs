@@ -1,4 +1,4 @@
-const SIZE: usize = 4;
+const SIZE: usize = 17;
 const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 /// System parameters
 /// TODOC

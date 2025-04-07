@@ -51,6 +51,9 @@ harness = false
 [package.metadata.docs.rs]
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 
+[profile.release]
+debug = true
+
 [features]
 default = []
 python-interface = ["dep:pyo3"]

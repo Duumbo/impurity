@@ -217,7 +217,7 @@ fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeO
 
 #[inline(always)]
 fn normalize(energy: &mut f64, energy_bootstraped: &mut f64, expval_o: &mut [f64], ho: &mut [f64], nsample: f64, nbootstrap: f64, nparams: usize) {
-    *energy *= 1.0 / nsample;
+    *energy *= 1.0 / (nsample - 1.0);
     *energy_bootstraped *= 1.0 / nsample;
     *energy_bootstraped *= 1.0 / nbootstrap;
     for i in 0..nparams {
@@ -323,6 +323,14 @@ where Standard: Distribution<T>
     derivatives.mu = 0;
     // Compute the derivative for the first element in the markov chain
     compute_derivative_operator(state, &pstate, derivatives, sys);
+    // Accumulate the first state into the markov chain
+    accumulated_states.push(state);
+    derivatives.visited[derivatives.mu as usize] += 1;
+    let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
+
+    accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
+    energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
+        energy_quad_sums, &mut n_values, 0, error_estimation_level);
     for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
         trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);

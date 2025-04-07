@@ -121,7 +121,8 @@ impl<I> BitOps for I
 
 impl From<SpinState> for u8 {
     fn from(other: SpinState) -> Self {
-        if ARRAY_SIZE > 1 {error!("Casting SpinState of size {} to <u8> discards overflowing bits.", SIZE)}
+        //Dumbo
+        //if ARRAY_SIZE > 1 {error!("Casting SpinState of size {} to <u8> discards overflowing bits.", SIZE)}
         other.state[0]
     }
 }

@@ -3,13 +3,6 @@ use pyo3::prelude::*;
 
 use blas::{dcopy, dgemm};
 
-/// Input file parsing util.
-/// # Subfiles
-/// * __`orbitale.csv`__ - Variationnal parameters for the orbital. In csv
-/// format, 3 column, for $f_{ij}$. First column is `i`, second is `j`. The third
-/// column is for the parameters identifier.
-pub mod parse;
-
 mod strings;
 
 // Have the FockState struct at the root.
@@ -326,6 +319,10 @@ pub mod hamiltonian;
 /// The optimisation of the ground state
 /// TODOC
 pub mod optimisation;
+
+/// Computation of the ground-state
+/// TODOC
+pub mod dvmc;
 
 #[cfg(feature = "python-interface")]
 #[pymodule]
