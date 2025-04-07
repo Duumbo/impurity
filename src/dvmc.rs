@@ -125,10 +125,10 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         //}
         //mapto_pairwf(&derivative, &mut work_derivative, sys);
 
-        //let mut x0 = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-        //x0[(sys.ngi + sys.nvij)..(sys.ngi + sys.nvij + sys.nfij)].copy_from_slice(params.fij);
-        //x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
-        //x0[0..sys.ngi].copy_from_slice(params.gi);
+        let mut x0 = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
+        x0[(sys.ngi + sys.nvij)..(sys.ngi + sys.nvij + sys.nfij)].copy_from_slice(params.fij);
+        x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
+        x0[0..sys.ngi].copy_from_slice(params.gi);
 
         // 68 misawa
         let mut b: Vec<f64> = vec![0.0; der.n as usize];
@@ -145,8 +145,7 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
                 exact_overlap_inverse(&der, &mut b, vmcparams.epsilon, vmcparams.nparams as i32, vmcparams.threshold)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
-                panic!("Not implemented.");
-                //conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax, vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg)
+                conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax, vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg)
             },
         };
         let mut delta_alpha = vec![0.0; vmcparams.nparams];

@@ -10,7 +10,7 @@ pub fn generate_bitmask(transfer_matrix: &[f64], size: usize) -> Vec<SpinState> 
             let one: u8 = 1;
             let mut j: usize = 0;
             while j < (size - 1 - i) {
-                if transfer_matrix[j + i + 1 + SIZE * j] != 0.0 {
+                if transfer_matrix[j + i + 1 + size * j] != 0.0 {
                     if i == 0 {
                         mask.state[(j + 2) / WORD_SIZE] ^= one << (WORD_SIZE - (j + 2) % WORD_SIZE);
                     } else {
