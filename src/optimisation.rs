@@ -5,6 +5,299 @@ use colored::Colorize;
 
 use crate::DerivativeOperator;
 
+/// Encoding of a map to a reduced representation
+/// # Map encoding
+/// This struct encodes a Map to and from the general representation with
+/// all the parameters to and from a reduced representation where some parameters
+/// are multiples of other.
+/// This struct is usefull to reduce the dimension of the optimisation and also
+/// reduces the amount of linearly dependant columns, which helps with conditionning.
+pub struct GenParameterMap {
+    /// Number of independant parameters.
+    pub dim: i32,
+    /// Dimension of general representation
+    pub gendim: i32,
+    /// Number of general parameters
+    pub n_genparams: i32,
+    /// Number of independant gutzwiller parameters.
+    pub n_independant_gutzwiller: usize,
+    /// Number of independant jastrow parameters.
+    pub n_independant_jastrow: usize,
+    /// The projector from the general representation to the reduced one.
+    /// Should behave:
+    /// Ax => \tilde{x} where every exquivalent component of x are sumed in
+    /// the lowest index and zero elsewhere.
+    /// Example:
+    /// A = ((1, 1), (0, 0))
+    /// x = (a, b)
+    /// \tilde{x} = (a + b, 0)
+    /// A will be triangular, so only the upper triangle needs to be stored.
+    /// If you transpose this matrix, it will reverse this operation somewhat
+    /// A^T = ((1, 0), (1, 0)
+    /// A\tilde{x} = (a + b, a + b)
+    /// This indeed copies the parameter x_0 to x_1. If x_1 is set to half x_0,
+    /// then
+    /// A = ((1, 2), (0, 0))
+    /// x = (a, b), Ax = (a + 2b)
+    /// Then the coefficient wise-inverse of the transpose is usefull
+    /// A^T^{-1} = ((1, 0), (1/2, 0))
+    /// x = (a, 0)
+    /// \tilde{x} = (a, 1/2 a)
+    /// It is then usefull to store only the lower triangle of the "inverse" of
+    /// the transpose, as coefficient don't matter when projecting, but do
+    /// matter when recovering.
+    ///
+    /// Indexing
+    /// n = dim (dim - 1) / 2 + i - (dim - j) * ( dim - j - 1) / 2
+    /// Can only have one non zero value per row
+    ///
+    /// PERFORMANCE:
+    /// If performance is an issue, an idea would be to write this matrix inside
+    /// an integer. This is not done here as it removes to possibility to make
+    /// a parameter say half another one.
+    pub projector: Box<[f64]>,
+}
+
+pub trait ReducibleGeneralRepresentation {
+    /// Overrides b and x0
+    /// Safety:
+    /// b and x0 must have lenght self.gendim
+    fn mapto_general_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],) -> DerivativeOperator;
+    /// Overrides b and x0
+    /// Safety:
+    /// b and x0 must have lenght self.gendim
+    /// On exit, the range [self.dim..self.gendim] contains garbage.
+    fn mapto_reduced_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],) -> DerivativeOperator;
+    /// Overrides b and x0
+    /// Safety:
+    /// b and x0 must have lenght self.gendim
+    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64],);
+    /// Overrides b and x0
+    /// Safety:
+    /// b and x0 must have lenght self.gendim
+    /// On exit, the range [self.dim..self.gendim] contains garbage.
+    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64],);
+}
+
+impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
+    fn mapto_general_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64]) -> DerivativeOperator
+    {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+
+        let mut out_b = vec![0.0; self.gendim as usize];
+        let mut out_x = vec![0.0; self.gendim as usize];
+        let n = self.gendim as usize;
+        let mut out_der = DerivativeOperator::new(self.gendim, der.mu, der.nsamp, der.nsamp_int,
+            self.n_independant_gutzwiller + self.n_independant_jastrow,
+            self.n_independant_gutzwiller, der.epsilon);
+
+        // Copy the visited vector
+        for i in 0..der.mu as usize {
+            out_der.visited[i] = der.visited[i];
+        }
+
+        // Copy all other data
+        for j in 0..n {
+            for i in 0..j {
+                let pij = self.projector[
+                    (n * (n - 1) / 2) + i - ((n - j) * (n - j - 1) /2)
+                ];
+                if pij != 0.0 {
+                    out_der.expval_o[j] = pij * der.expval_o[i];
+                    out_der.ho[j] = pij * der.ho[i];
+                    out_b[j] = pij * b[i];
+                    out_x[j] = pij * x0[i];
+                    unsafe {
+                        let incx = self.dim;
+                        let incy = self.gendim;
+                        dcopy(
+                            der.mu,
+                            &der.o_tilde[j..(self.dim*der.mu) as usize],
+                            incx,
+                            &mut out_der.o_tilde[i..(self.gendim * der.mu) as usize],
+                            incy
+                        );
+                    }
+                    // Rest of the row is zero as stated in doc
+                    break;
+                }
+            }
+        }
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            dcopy(self.gendim, &out_b, incx, b, incy);
+            dcopy(self.gendim, &out_x, incx, x0, incy);
+        }
+
+        // Should return b and x0 as well
+        out_der
+    }
+
+    fn mapto_reduced_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64]) -> DerivativeOperator
+    {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+        let n = self.gendim as usize;
+        let mut out_der = DerivativeOperator::new(self.dim, der.mu, der.nsamp, der.nsamp_int,
+            self.n_independant_gutzwiller + self.n_independant_jastrow,
+            self.n_independant_gutzwiller, der.epsilon);
+
+        // Copy the visited vector
+        for i in 0..der.mu as usize {
+            out_der.visited[i] = der.visited[i];
+        }
+
+        // Copy all other data
+        // iter over transpose's diagonal
+        let mut i: usize = 0;
+        for j in 0..n {
+            let pjj = self.projector[
+                (n * (n - 1) / 2) + j - ((n - j) * (n - j - 1) /2)
+            ];
+            if pjj != 0.0 { // If 0, parameter does not map to itself.
+                if pjj != 1.0 {
+                    error!("Parameters must map to themselfs with multiple 1.");
+                    panic!("Undefined behavior.");
+                }
+                out_der.expval_o[i] = der.expval_o[j];
+                out_der.ho[i] = der.ho[j];
+                // Modify the vectors inplace, we won't iterate on past values
+                b[i] = b[j];
+                x0[i] = x0[j];
+                unsafe {
+                    let incx = self.gendim;
+                    let incy = self.dim;
+                    dcopy(
+                        der.mu,
+                        &der.o_tilde[j..n*der.mu as usize],
+                        incx,
+                        &mut out_der.o_tilde[i..(self.dim * der.mu) as usize],
+                        incy
+                    );
+                }
+                // Filling the independant parameter index
+                i += 1;
+            }
+        }
+        if i != self.dim as usize {
+            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
+            panic!("Undefined behavior.");
+        }
+
+        out_der
+    }
+
+    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64]) {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+
+        let mut out_b = vec![0.0; self.gendim as usize];
+        let mut out_x = vec![0.0; self.gendim as usize];
+        let n = self.gendim as usize;
+
+        // Copy the visited vector
+        for i in 0..der.mu as usize {
+            out_der.visited[i] = der.visited[i];
+        }
+
+        // Copy all other data
+        for j in 0..n {
+            for i in 0..j {
+                let pij = self.projector[
+                    (n * (n - 1) / 2) + i - ((n - j) * (n - j - 1) /2)
+                ];
+                if pij != 0.0 {
+                    out_der.expval_o[j] = pij * der.expval_o[i];
+                    out_der.ho[j] = pij * der.ho[i];
+                    out_b[j] = pij * b[i];
+                    out_x[j] = pij * x0[i];
+                    unsafe {
+                        let incx = self.dim;
+                        let incy = self.gendim;
+                        dcopy(
+                            der.mu,
+                            &der.o_tilde[j..(self.dim*der.mu) as usize],
+                            incx,
+                            &mut out_der.o_tilde[i..(self.gendim * der.mu) as usize],
+                            incy
+                        );
+                    }
+                    // Rest of the row is zero as stated in doc
+                    break;
+                }
+            }
+        }
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            dcopy(self.gendim, &out_b, incx, b, incy);
+            dcopy(self.gendim, &out_x, incx, x0, incy);
+        }
+    }
+
+    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64]) {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+        let n = self.gendim as usize;
+
+        // Copy the visited vector
+        for i in 0..der.mu as usize {
+            out_der.visited[i] = der.visited[i];
+        }
+
+        // Copy all other data
+        // iter over transpose's diagonal
+        let mut i: usize = 0;
+        for j in 0..n {
+            let pjj = self.projector[
+                (n * (n - 1) / 2) + j - ((n - j) * (n - j - 1) /2)
+            ];
+            if pjj != 0.0 { // If 0, parameter does not map to itself.
+                if pjj != 1.0 {
+                    error!("Parameters must map to themselfs with multiple 1.");
+                    panic!("Undefined behavior.");
+                }
+                out_der.expval_o[i] = der.expval_o[j];
+                out_der.ho[i] = der.ho[j];
+                // Modify the vectors inplace, we won't iterate on past values
+                b[i] = b[j];
+                x0[i] = x0[j];
+                unsafe {
+                    let incx = self.gendim;
+                    let incy = self.dim;
+                    dcopy(
+                        der.mu,
+                        &der.o_tilde[j..n*der.mu as usize],
+                        incx,
+                        &mut out_der.o_tilde[i..(self.dim * der.mu) as usize],
+                        incy
+                    );
+                }
+                // Filling the independant parameter index
+                i += 1;
+            }
+        }
+        if i != self.dim as usize {
+            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
+            panic!("Undefined behavior.");
+        }
+    }
+}
+
 fn gradient(x: &[f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], b: &mut [f64], epsilon: f64, dim: i32, mu: i32, nsamp: f64) {
     let alpha = -1.0;
     let incx = 1;
@@ -308,7 +601,7 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
     //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
-    let mut unfiltered_s = compute_s_explicit(a.o_tilde, a.expval_o, a.visited, dim, a.mu, a.nsamp, epsilon);
+    let mut unfiltered_s = compute_s_explicit(&a.o_tilde, &a.expval_o, &a.visited, dim, a.mu, a.nsamp, epsilon);
     //println!("dim = {}, Unfiltered S = ", dim);
     //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
     let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
@@ -412,7 +705,7 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
     //println!("Error threshold e = {}", e);
-    gradient(x0, &otilde, a.visited, &expvalo, b, epsilon, new_dim as i32, a.mu, a.nsamp);
+    gradient(x0, &otilde, &a.visited, &expvalo, b, epsilon, new_dim as i32, a.mu, a.nsamp);
     let mut p = vec![0.0; new_dim];
     let mut j: usize = 0;
     for i in 0..dim as usize {
@@ -432,7 +725,7 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         trace!("p_{} : {:?}", k, p);
         //println!("r_{} : {:?}", k, b);
         //println!("p_{} : {:?}", k, p);
-        compute_w(&mut w, &otilde, a.visited, &expvalo, &p, epsilon, new_dim as i32, a.mu, a.nsamp);
+        compute_w(&mut w, &otilde, &a.visited, &expvalo, &p, epsilon, new_dim as i32, a.mu, a.nsamp);
         //println!("w_{} : {:?}", k, w);
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
         trace!("alpha_{} : {}", k, alpha);

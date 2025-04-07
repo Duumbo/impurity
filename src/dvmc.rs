@@ -62,30 +62,42 @@ pub fn variationnal_monte_carlo<R: Rng + ?Sized, T>(
 where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
 {
     let mut output_energy_array = vec![0.0; vmcparams.noptiter * 3];
-    let mut otilde: Vec<f64> = vec![0.0; (4*sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    //let mut work_otilde: Vec<f64> = vec![0.0; (sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    let mut expvalo: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    //let mut work_expvalo: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    let mut expval_ho: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    //let mut work_expval_ho: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    let mut visited: Vec<usize> = vec![0; sys.nmcsample + 1];
-    //let mut work_visited: Vec<usize> = vec![0; sys.nmcsample + 1];
-    let mut der = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
-        n: (4*sys.nfij + sys.nvij + sys.ngi) as i32,
-        nsamp: match vmcparams.compute_energy_method {
+    //let mut otilde: Vec<f64> = vec![0.0; (4*sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
+    ////let mut work_otilde: Vec<f64> = vec![0.0; (sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
+    //let mut expvalo: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
+    ////let mut work_expvalo: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
+    //let mut expval_ho: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
+    ////let mut work_expval_ho: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
+    //let mut visited: Vec<usize> = vec![0; sys.nmcsample + 1];
+    ////let mut work_visited: Vec<usize> = vec![0; sys.nmcsample + 1];
+    let mut der = DerivativeOperator::new(
+        (sys.ngi + sys.nvij + sys.nfij) as i32,
+        -1,
+        match vmcparams.compute_energy_method {
             EnergyComputationMethod::ExactSum => 1.0,
             EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
         },
-        nsamp_int: sys.mcsample_interval,
-        mu: -1,
-        visited: &mut visited,
-        pfaff_off: sys.ngi + sys.nvij,
-        jas_off: sys.ngi,
-        epsilon: vmcparams.epsilon,
-    };
+        sys.mcsample_interval,
+        sys.ngi + sys.nvij,
+        sys.ngi,
+        vmcparams.epsilon
+    );
+    //let mut der = DerivativeOperator {
+    //    o_tilde: &mut otilde,
+    //    expval_o: &mut expvalo,
+    //    ho: &mut expval_ho,
+    //    n: (4*sys.nfij + sys.nvij + sys.ngi) as i32,
+    //    nsamp: match vmcparams.compute_energy_method {
+    //        EnergyComputationMethod::ExactSum => 1.0,
+    //        EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
+    //    },
+    //    nsamp_int: sys.mcsample_interval,
+    //    mu: -1,
+    //    visited: &mut visited,
+    //    pfaff_off: sys.ngi + sys.nvij,
+    //    jas_off: sys.ngi,
+    //    epsilon: vmcparams.epsilon,
+    //};
     //let mut work_derivative = DerivativeOperator {
     //    o_tilde: &mut work_otilde,
     //    expval_o: &mut work_expvalo,
@@ -135,8 +147,8 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         unsafe {
             let incx = 1;
             let incy = 1;
-            daxpy(der.n, -mean_energy, der.expval_o, incx, der.ho, incy);
-            dcopy(der.n, der.ho, incx, &mut b, incy);
+            daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
+            dcopy(der.n, &der.ho, incx, &mut b, incy);
         }
 
         let mut _flag: bool = true;
