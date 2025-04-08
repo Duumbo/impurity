@@ -19,6 +19,7 @@ const NELEC: usize = SIZE;
 const NMCSAMP: usize = 1_000;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
+const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
@@ -137,7 +138,7 @@ fn main() {
     let mut rng = Mt64::new(SEED);
 
     for nsweep_iter in 0..NRATIO_POINTS {
-        let system_params = SysParams {
+        let mut system_params = SysParams {
             size: SIZE,
             nelec: NELEC,
             array_size: (SIZE + 7) / 8,
@@ -152,10 +153,12 @@ fn main() {
             nmcsample: NMCSAMP,
             nbootstrap: NBOOTSTRAP,
             nmcwarmup: NMCWARMUP,
+            nwarmupchains: NWARMUPCHAINS,
             mcsample_interval: MCSAMPLE_INTERVAL,
             tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
             tolerance_singularity: TOLERENCE_SINGULARITY,
             pair_wavefunction: true,
+            _opt_iter: 0,
         };
         println!("U = {}, T = {}", system_params.cons_u, system_params.cons_t);
 
@@ -197,7 +200,7 @@ fn main() {
             tmp
         };
 
-        let e_array = variationnal_monte_carlo(&mut rng, state, &mut parameters, &system_params, &vmcparams);
+        let e_array = variationnal_monte_carlo(&mut rng, state, &mut parameters, &mut system_params, &vmcparams);
         write_energy(&mut fp, &e_array);
 
         log_energy_convs(&e_array, &mut paramsfp);

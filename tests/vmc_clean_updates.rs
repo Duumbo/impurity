@@ -86,25 +86,27 @@ fn monte_carlo_first_iteration() {
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcwarmup: NMCWARMUP,
         nmcsample: NMCSAMP,
+        nwarmupchains: 1,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERANCE_SINGULARITY,
         pair_wavefunction: false,
+        _opt_iter: 0,
     };
     log_system_parameters(&sys);
 
-    let mut otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
-    let mut expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited: Vec<usize> = vec![0; NMCSAMP];
+    let otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
+    let expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited: Vec<usize> = vec![0; NMCSAMP];
     let mut der = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
+        o_tilde: otilde.into_boxed_slice(),
+        expval_o: expvalo.into_boxed_slice(),
+        ho: expval_ho.into_boxed_slice(),
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: NMCSAMP as f64,
         nsamp_int: 1,
         mu: -1,
-        visited: &mut visited,
+        visited: visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: 0.0,

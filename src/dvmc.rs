@@ -56,7 +56,7 @@ pub fn variationnal_monte_carlo<R: Rng + ?Sized, T>(
     rng: &mut R,
     initial_state: FockState<T>,
     params: &mut VarParams,
-    sys: &SysParams,
+    sys: &mut SysParams,
     vmcparams: &VMCParams
 ) -> Vec<f64>
 where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
@@ -115,6 +115,7 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
     //    epsilon: vmcparams.epsilon,
     //};
     for opt_iter in 0..vmcparams.noptiter {
+        sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
                 EnergyComputationMethod::MonteCarlo => compute_mean_energy(rng, initial_state, params, sys, &mut der),

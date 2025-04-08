@@ -313,9 +313,11 @@ where Standard: Distribution<T>
     let mut n_values = vec![0; error_estimation_level];
     let mut energy_bootstraped = 0.0;
 
-    info!("Starting the warmup phase.");
-    warmup(rng, &mut state, &mut hop, &mut proj, &mut proj_copy_persistent, &mut ratio_prod, &mut
-        pstate, &mut n_accepted_updates, params, sys);
+    if sys.nwarmupchains > sys._opt_iter {
+        info!("Starting the warmup phase.");
+        warmup(rng, &mut state, &mut hop, &mut proj, &mut proj_copy_persistent, &mut ratio_prod, &mut
+            pstate, &mut n_accepted_updates, params, sys);
+    }
 
     info!("Starting the sampling phase.");
     // MC Sampling

@@ -19,6 +19,7 @@ const NELEC: usize = SIZE;
 const NMCSAMP: usize = 500;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
+const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
@@ -192,7 +193,7 @@ fn main() {
     // Initialize logger
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
-    let system_params = SysParams {
+    let mut system_params = SysParams {
         size: SIZE,
         nelec: NELEC,
         array_size: (SIZE + 7) / 8,
@@ -207,10 +208,12 @@ fn main() {
         nmcsample: NMCSAMP,
         nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
+        nwarmupchains: NWARMUPCHAINS,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERENCE_SINGULARITY,
         pair_wavefunction: true,
+        _opt_iter: 0,
     };
 
     let mut rng = Mt64::new(SEED);
@@ -253,14 +256,14 @@ fn main() {
         tmp
     };
 
-    let mut otilde: Vec<f64> = vec![0.0; (4*NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
-    let mut work_otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
-    let mut expvalo: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
-    let mut work_expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
-    let mut work_expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited: Vec<usize> = vec![0; NMCSAMP + 1];
-    let mut work_visited: Vec<usize> = vec![0; NMCSAMP + 1];
+    let otilde: Vec<f64> = vec![0.0; (4*NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
+    let work_otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
+    let expvalo: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
+    let work_expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
+    let work_expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited: Vec<usize> = vec![0; NMCSAMP + 1];
+    let work_visited: Vec<usize> = vec![0; NMCSAMP + 1];
     let mut derivative = DerivativeOperator {
         o_tilde: otilde.into_boxed_slice(),
         expval_o: expvalo.into_boxed_slice(),
@@ -305,6 +308,7 @@ fn main() {
     .progress_chars("##-"));
 
     for opt_iter in 0..NOPTITER {
+        system_params._opt_iter = opt_iter;
         let (mean_energy, accumulated_states, deltae, correlation_time) = {
             match COMPUTE_ENERGY_METHOD {
                 EnergyComputationMethod::MonteCarlo => compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative),

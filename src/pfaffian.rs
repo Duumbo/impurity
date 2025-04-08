@@ -658,9 +658,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut rng = SmallRng::seed_from_u64(42);
         // Size of the system
@@ -797,9 +799,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -840,9 +844,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -902,9 +908,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -982,9 +990,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij

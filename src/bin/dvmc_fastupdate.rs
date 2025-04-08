@@ -19,6 +19,7 @@ const NELEC: usize = SIZE;
 const NMCSAMP: usize = 10_000;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
+const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 6;
 const CLEAN_UPDATE_FREQUENCY: usize = 2;
@@ -160,10 +161,12 @@ fn main() {
         nmcsample: NMCSAMP,
         nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
+        nwarmupchains: NWARMUPCHAINS,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERENCE_SINGULARITY,
         pair_wavefunction: false,
+        _opt_iter: 0,
     };
 
     let mut rng = Mt64::new(SEED);
@@ -270,19 +273,19 @@ fn main() {
         tmp
     };
 
-    let mut otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
-    let mut expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited: Vec<usize> = vec![0; NMCSAMP];
+    let otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
+    let expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited: Vec<usize> = vec![0; NMCSAMP];
     let mut derivative = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
+        o_tilde: otilde.into_boxed_slice(),
+        expval_o: expvalo.into_boxed_slice(),
+        ho: expval_ho.into_boxed_slice(),
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: NMCSAMP as f64,
         nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
-        visited: &mut visited,
+        visited: visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: EPSILON_SPREAD,
@@ -320,8 +323,8 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            daxpy(derivative.n, -mean_energy, derivative.expval_o, incx, derivative.ho, incy);
-            dcopy(derivative.n, derivative.ho, incx, &mut b, incy);
+            daxpy(derivative.n, -mean_energy, &derivative.expval_o, incx, &mut derivative.ho, incy);
+            dcopy(derivative.n, &derivative.ho, incx, &mut b, incy);
         }
         spread_eigenvalues(&mut derivative);
         exact_overlap_inverse(&derivative, &mut b, EPSILON_CG, NPARAMS as i32, PARAMTHRESHOLD);
