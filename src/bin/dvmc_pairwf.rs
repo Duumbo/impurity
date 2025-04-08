@@ -87,7 +87,7 @@ fn _save_otilde(fp: &mut File, der: &DerivativeOperator) {
     let mut c = vec![0.0; (der.n * der.n) as usize];
     println!("dim = {}", der.n * der.n);
     unsafe {
-        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, der.o_tilde, der.n, der.o_tilde, der.n, 0.0, &mut c, der.n);
+        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, &der.o_tilde, der.n, &der.o_tilde, der.n, 0.0, &mut c, der.n);
     }
     let mut outstr = "".to_owned();
     outstr.push_str(&format!("<O_kO_m> = "));
@@ -262,9 +262,9 @@ fn main() {
     let mut visited: Vec<usize> = vec![0; NMCSAMP + 1];
     let mut work_visited: Vec<usize> = vec![0; NMCSAMP + 1];
     let mut derivative = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
+        o_tilde: otilde.into_boxed_slice(),
+        expval_o: expvalo.into_boxed_slice(),
+        ho: expval_ho.into_boxed_slice(),
         n: (4*NFIJ + NVIJ + NGI) as i32,
         nsamp: match COMPUTE_ENERGY_METHOD {
             EnergyComputationMethod::ExactSum => 1.0,
@@ -272,15 +272,15 @@ fn main() {
         },
         nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
-        visited: &mut visited,
+        visited: visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: EPSILON_SHIFT,
     };
     let mut work_derivative = DerivativeOperator {
-        o_tilde: &mut work_otilde,
-        expval_o: &mut work_expvalo,
-        ho: &mut work_expval_ho,
+        o_tilde: work_otilde.into_boxed_slice(),
+        expval_o: work_expvalo.into_boxed_slice(),
+        ho: work_expval_ho.into_boxed_slice(),
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: match COMPUTE_ENERGY_METHOD {
             EnergyComputationMethod::ExactSum => 1.0,
@@ -288,7 +288,7 @@ fn main() {
         },
         nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
-        visited: &mut work_visited,
+        visited: work_visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: EPSILON_SHIFT,
@@ -347,8 +347,8 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            daxpy(work_derivative.n, -mean_energy, work_derivative.expval_o, incx, work_derivative.ho, incy);
-            dcopy(work_derivative.n, work_derivative.ho, incx, &mut b, incy);
+            daxpy(work_derivative.n, -mean_energy, &work_derivative.expval_o, incx, &mut work_derivative.ho, incy);
+            dcopy(work_derivative.n, &work_derivative.ho, incx, &mut b, incy);
         }
         //save_otilde(&mut der_fp, &derivative);
         //save_otilde(&mut wder_fp, &work_derivative);
