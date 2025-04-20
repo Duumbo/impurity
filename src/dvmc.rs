@@ -6,7 +6,7 @@ use blas::{idamax, daxpy, dcopy, dscal};
 
 use crate::{VarParams, DerivativeOperator, SysParams, FockState, BitOps};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
-use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse};
+use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse, GenParameterMap, ReducibleGeneralRepresentation};
 
 #[derive(Debug)]
 pub enum EnergyOptimisationMethod {
@@ -39,10 +39,10 @@ pub struct VMCParams {
 }
 
 fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams) {
-    for i in 0.. (sys.nfij + sys.nvij + sys.ngi) * sys.nmcsample {
+    for i in 0.. (der.n as usize) * sys.nmcsample {
         der.o_tilde[i] = 0.0;
     }
-    for i in 0..sys.nfij + sys.nvij + sys.ngi {
+    for i in 0..der.n as usize {
         der.expval_o[i] = 0.0;
         der.ho[i] = 0.0;
     }
@@ -57,31 +57,28 @@ pub fn variationnal_monte_carlo<R: Rng + ?Sized, T>(
     initial_state: FockState<T>,
     params: &mut VarParams,
     sys: &mut SysParams,
-    vmcparams: &VMCParams
+    vmcparams: &VMCParams,
+    param_map: &GenParameterMap,
 ) -> Vec<f64>
 where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
 {
     let mut output_energy_array = vec![0.0; vmcparams.noptiter * 3];
-    //let mut otilde: Vec<f64> = vec![0.0; (4*sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    ////let mut work_otilde: Vec<f64> = vec![0.0; (sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    //let mut expvalo: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    ////let mut work_expvalo: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    //let mut expval_ho: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    ////let mut work_expval_ho: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    //let mut visited: Vec<usize> = vec![0; sys.nmcsample + 1];
-    ////let mut work_visited: Vec<usize> = vec![0; sys.nmcsample + 1];
+
+    let mut x0 = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
+    let mut b = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
     let mut der = DerivativeOperator::new(
-        (sys.ngi + sys.nvij + sys.nfij) as i32,
+        vmcparams.nparams as i32,
         -1,
         match vmcparams.compute_energy_method {
             EnergyComputationMethod::ExactSum => 1.0,
             EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
         },
         sys.mcsample_interval,
-        sys.ngi + sys.nvij,
-        sys.ngi,
+        param_map.n_independant_jastrow + param_map.n_independant_gutzwiller,
+        param_map.n_independant_gutzwiller,
         vmcparams.epsilon
     );
+    let mut work_der = param_map.mapto_general_representation(&der, &mut x0);
     //let mut der = DerivativeOperator {
     //    o_tilde: &mut otilde,
     //    expval_o: &mut expvalo,
@@ -115,12 +112,15 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
     //    epsilon: vmcparams.epsilon,
     //};
     for opt_iter in 0..vmcparams.noptiter {
+        //println!("{:?}", params.fij);
+        //println!("x0 = {:?}", x0);
+        //println!("b = {:?}", b);
         sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
-                EnergyComputationMethod::MonteCarlo => compute_mean_energy(rng, initial_state, params, sys, &mut der),
+                EnergyComputationMethod::MonteCarlo => compute_mean_energy(rng, initial_state, params, sys, &mut work_der),
                 EnergyComputationMethod::ExactSum => {
-                    (compute_mean_energy_exact(params, sys, &mut der), Vec::with_capacity(0), 0.0, 0.0)
+                    (compute_mean_energy_exact(params, sys, &mut work_der), Vec::with_capacity(0), 0.0, 0.0)
                 },
             }
         };
@@ -138,13 +138,16 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         //}
         //mapto_pairwf(&derivative, &mut work_derivative, sys);
 
-        let mut x0 = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
         x0[(sys.ngi + sys.nvij)..(sys.ngi + sys.nvij + sys.nfij)].copy_from_slice(params.fij);
         x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
         x0[0..sys.ngi].copy_from_slice(params.gi);
+        param_map.update_reduced_representation(&work_der, &mut der, &mut x0);
+        //println!("Expval Full = {:?}", work_der.ho);
+        //println!("Expval Reduced = {:?}", der.ho);
+        //panic!("Stop.");
 
         // 68 misawa
-        let mut b: Vec<f64> = vec![0.0; der.n as usize];
+        //let mut b: Vec<f64> = vec![0.0; der.n as usize];
         unsafe {
             let incx = 1;
             let incy = 1;
@@ -161,7 +164,7 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
                 conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax, vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg)
             },
         };
-        let mut delta_alpha = vec![0.0; vmcparams.nparams];
+        let mut delta_alpha = vec![0.0; param_map.gendim as usize];
         let mut j: usize = 0;
         for i in 0..vmcparams.nparams {
             if ignored_columns[i] {
@@ -173,6 +176,11 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
                 _flag = false;
             }
         }
+        //panic!("Stop!");
+        param_map.update_delta_alpha_reduced_to_gen(&mut delta_alpha);
+        //println!("b = {:?}", b);
+        //println!("delta_alpha = {:?}", delta_alpha);
+        //panic!("Stop.");
         if vmcparams.optimise {
             unsafe {
                 let incx = 1;
@@ -241,6 +249,7 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         //    );
         //}
         zero_out_derivatives(&mut der, sys);
+        zero_out_derivatives(&mut work_der, sys);
         //print_delta_alpha(&delta_alpha, sys.ngi, sys.nvij, sys.nfij);
         //let opt_delta = unsafe {
         //    let incx = 1;

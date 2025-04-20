@@ -1,3 +1,4 @@
+use impurity::optimisation::GenParameterMap;
 //use blas::dcopy;
 //use log::{debug, info};
 use rand_mt::Mt64;
@@ -10,7 +11,7 @@ use impurity::{VarParams, SysParams, generate_bitmask, FockState, RandomStateGen
 use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyComputationMethod, VMCParams};
 
 const SEED: u64 = 14;
-const SIZE: usize = 8;
+const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
@@ -27,7 +28,7 @@ const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const CONS_U: f64 = 1.0;
 const CONS_T: f64 = 1.0;
-const INITIAL_RATIO_UT: f64 = 1.0;
+const INITIAL_RATIO_UT: f64 = 8.0;
 const FINAL_RATIO_UT: f64 = 32.0;
 const NRATIO_POINTS: usize = 1;
 const EPSILON_CG: f64 = 1e-16;
@@ -36,7 +37,7 @@ const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const OPTIMISATION_DECAY: f64 = 0.0;
 const NOPTITER: usize = 1000;
 const KMAX: usize = NPARAMS;
-const PARAM_THRESHOLD: f64 = <f64>::MIN;
+const PARAM_THRESHOLD: f64 = 1e-5;
 //const PARAM_THRESHOLD: f64 = 0.0;
 const OPTIMISE: bool = true;
 const OPTIMISE_GUTZ: bool = true;
@@ -46,15 +47,19 @@ const SET_EXPVALO_ZERO: bool = false;
 const COMPUTE_ENERGY_METHOD: EnergyComputationMethod = EnergyComputationMethod::MonteCarlo;
 const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ConjugateGradiant;
 const ENERGY_CONV_AVERAGE_SAMPLE: usize = 20;
+const N_INDEP_PARAMS: usize = 3;
+const N_GUTZ: usize = NGI;
+const N_JAST: usize = NVIJ;
+const PAIRWF: bool = false;
 
 // 4 et 2 Sites
-//pub const HOPPINGS: [f64; SIZE*SIZE] = [
-//    //0.0, 1.0, 1.0, 0.0,
-//    0.0, 1.0, 1.0, 0.0,
-//    1.0, 0.0, 0.0, 1.0,
-//    1.0, 0.0, 0.0, 1.0,
-//    0.0, 1.0, 1.0, 0.0
-//];
+pub const HOPPINGS: [f64; SIZE*SIZE] = [
+    0.0, 1.0, 1.0, 0.0,
+    //0.0, 1.0, 1.0, 0.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //0.0, 1.0, 1.0, 0.0
+];
 
 // 7 Sites
 //pub const HOPPINGS: [f64; SIZE*SIZE] = [
@@ -68,16 +73,16 @@ const ENERGY_CONV_AVERAGE_SAMPLE: usize = 20;
 //];
 
 // 8 Sites
-pub const HOPPINGS: [f64; SIZE*SIZE] = [
-    0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
-    1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
-    1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0,
-    0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
-    0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
-];
+//pub const HOPPINGS: [f64; SIZE*SIZE] = [
+//    0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
+//    1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+//    0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+//    1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0,
+//    0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+//    0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
+//    0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+//];
 
 // 16 Sites
 //pub const HOPPINGS: [f64; SIZE*SIZE] = [
@@ -97,6 +102,53 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
 //    0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
 //    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
 //    0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+//];
+//
+
+// Pairwf
+const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = [
+    /* g0 */    1.0, // 0,
+    /* g1 */    1.0, 0.0, //
+    /* v01 */   0.0, 0.0, 0.0,
+    /* f00uu */ 0.0, 0.0, 0.0, 0.0,
+    /* f01uu */ 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f10uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f11uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f00ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    /* f01ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    /* f10ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    /* f11ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+    /* f00du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f01du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f10du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f11du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f00dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f01dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f10dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    /* f11dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+];
+
+// General rep
+//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = [
+//    /* g0 */    1.0, // 0,
+//    /* g1 */    0.0, 1.0, //
+//    /* v01 */   0.0, 0.0, 1.0,
+//    /* f00uu */ 0.0, 0.0, 0.0, 1.0,
+//    /* f01uu */ 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f10uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f11uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f00ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f01ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f10ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f11ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f00du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f01du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f10du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f11du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f00dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f01dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f10dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f11dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
 //];
 
 
@@ -157,7 +209,7 @@ fn main() {
             mcsample_interval: MCSAMPLE_INTERVAL,
             tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
             tolerance_singularity: TOLERENCE_SINGULARITY,
-            pair_wavefunction: true,
+            pair_wavefunction: PAIRWF,
             _opt_iter: 0,
         };
         println!("U = {}, T = {}", system_params.cons_u, system_params.cons_t);
@@ -174,6 +226,15 @@ fn main() {
             vij,
             size: SIZE
         };
+        for i in 0..SIZE*SIZE {
+            parameters.fij[i] = 0.0;
+            parameters.fij[i +SIZE*SIZE] = 0.5;
+            parameters.fij[i +2*SIZE*SIZE] = 0.0;
+            parameters.fij[i +3*SIZE*SIZE] = 0.0;
+        }
+        parameters.gi[1] = 0.0;
+        parameters.gi[0] = parameters.gi[1];
+        println!("{:?}", parameters.fij);
 
         let vmcparams = VMCParams {
             dt: OPTIMISATION_TIME_STEP,
@@ -183,7 +244,7 @@ fn main() {
             epsilon: EPSILON_SHIFT,
             epsilon_cg: EPSILON_CG,
             noptiter: NOPTITER,
-            nparams: NGI + NVIJ + NFIJ,
+            nparams: N_INDEP_PARAMS,
             optimise: OPTIMISE,
             optimise_gutzwiller: OPTIMISE_GUTZ,
             optimise_jastrow: OPTIMISE_JAST,
@@ -199,9 +260,19 @@ fn main() {
             }
             tmp
         };
+        let param_map = GenParameterMap {
+            dim: N_INDEP_PARAMS as i32,
+            gendim: (NFIJ + NGI + NVIJ) as i32,
+            n_genparams: (NFIJ + NGI + NVIJ) as i32,
+            n_independant_gutzwiller: N_GUTZ,
+            n_independant_jastrow: N_JAST,
+            projector: Box::new(PARAMS_PROJECTOR),
+        };
 
-        let e_array = variationnal_monte_carlo(&mut rng, state, &mut parameters, &mut system_params, &vmcparams);
+        let e_array = variationnal_monte_carlo(&mut rng, state, &mut parameters, &mut system_params, &vmcparams, &param_map);
         write_energy(&mut fp, &e_array);
+        println!("gi = {:?}", parameters.gi);
+        println!("fij = {:?}", parameters.fij);
 
         log_energy_convs(&e_array, &mut paramsfp);
 

@@ -467,5 +467,5 @@ fn main() {
         opt_progress_bar.inc(1);
         opt_progress_bar.set_message(format!("Changed parameters by norm: {:+>.05e} Current energy: {:+>.05e}", opt_delta, mean_energy));
     }
-    opt_progress_bar.finish()
+    opt_progress_bar.finish();
 }

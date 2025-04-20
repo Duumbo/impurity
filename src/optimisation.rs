@@ -62,25 +62,26 @@ pub trait ReducibleGeneralRepresentation {
     /// Overrides b and x0
     /// Safety:
     /// b and x0 must have lenght self.gendim
-    fn mapto_general_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],) -> DerivativeOperator;
+    fn mapto_general_representation(&self, der: &DerivativeOperator, x0: &mut [f64],) -> DerivativeOperator;
     /// Overrides b and x0
     /// Safety:
     /// b and x0 must have lenght self.gendim
     /// On exit, the range [self.dim..self.gendim] contains garbage.
-    fn mapto_reduced_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],) -> DerivativeOperator;
+    fn mapto_reduced_representation(&self, der: &DerivativeOperator, x0: &mut [f64],) -> DerivativeOperator;
     /// Overrides b and x0
     /// Safety:
     /// b and x0 must have lenght self.gendim
-    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64],);
+    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64],);
     /// Overrides b and x0
     /// Safety:
     /// b and x0 must have lenght self.gendim
     /// On exit, the range [self.dim..self.gendim] contains garbage.
-    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64],);
+    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64],);
+    fn update_delta_alpha_reduced_to_gen(&self, x0: &mut [f64]);
 }
 
 impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
-    fn mapto_general_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64]) -> DerivativeOperator
+    fn mapto_general_representation(&self, der: &DerivativeOperator, x0: &mut [f64]) -> DerivativeOperator
     {
         if self.dim == 0 {
             error!("Tried to map from an empty parameter representation, this will
@@ -88,12 +89,14 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
             panic!("Undefined behavior.");
         }
 
-        let mut out_b = vec![0.0; self.gendim as usize];
         let mut out_x = vec![0.0; self.gendim as usize];
         let n = self.gendim as usize;
         let mut out_der = DerivativeOperator::new(self.gendim, der.mu, der.nsamp, der.nsamp_int,
             self.n_independant_gutzwiller + self.n_independant_jastrow,
             self.n_independant_gutzwiller, der.epsilon);
+        if der.mu < 0 {
+            return out_der;
+        }
 
         // Copy the visited vector
         for i in 0..der.mu as usize {
@@ -101,36 +104,40 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         }
 
         // Copy all other data
+        let mut k = 0;
+        let mut flag = false;
         for j in 0..n {
-            for i in 0..j {
+            for i in n..n {
                 let pij = self.projector[
-                    (n * (n - 1) / 2) + i - ((n - j) * (n - j - 1) /2)
+                    j + (i * (i+1) / 2)
                 ];
                 if pij != 0.0 {
-                    out_der.expval_o[j] = pij * der.expval_o[i];
-                    out_der.ho[j] = pij * der.ho[i];
-                    out_b[j] = pij * b[i];
-                    out_x[j] = pij * x0[i];
+                    out_der.expval_o[i] = pij * der.expval_o[k];
+                    out_der.ho[i] = pij * der.ho[k];
+                    out_x[i] = pij * x0[k];
                     unsafe {
                         let incx = self.dim;
                         let incy = self.gendim;
                         dcopy(
                             der.mu,
-                            &der.o_tilde[j..(self.dim*der.mu) as usize],
+                            &der.o_tilde[i..(self.dim*der.mu) as usize],
                             incx,
-                            &mut out_der.o_tilde[i..(self.gendim * der.mu) as usize],
+                            &mut out_der.o_tilde[k..(self.gendim * der.mu) as usize],
                             incy
                         );
                     }
-                    // Rest of the row is zero as stated in doc
-                    break;
+                    flag = true;
+                    //break;
                 }
+            }
+            if flag{
+                k += 1;
+                flag = false;
             }
         }
         unsafe {
             let incx = 1;
             let incy = 1;
-            dcopy(self.gendim, &out_b, incx, b, incy);
             dcopy(self.gendim, &out_x, incx, x0, incy);
         }
 
@@ -138,7 +145,7 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         out_der
     }
 
-    fn mapto_reduced_representation(&self, der: &DerivativeOperator, b: &mut [f64], x0: &mut [f64]) -> DerivativeOperator
+    fn mapto_reduced_representation(&self, der: &DerivativeOperator, x0: &mut [f64]) -> DerivativeOperator
     {
         if self.dim == 0 {
             error!("Tried to map from an empty parameter representation, this will
@@ -149,6 +156,9 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         let mut out_der = DerivativeOperator::new(self.dim, der.mu, der.nsamp, der.nsamp_int,
             self.n_independant_gutzwiller + self.n_independant_jastrow,
             self.n_independant_gutzwiller, der.epsilon);
+        if der.mu < 0 {
+            return out_der;
+        }
 
         // Copy the visited vector
         for i in 0..der.mu as usize {
@@ -160,7 +170,7 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         let mut i: usize = 0;
         for j in 0..n {
             let pjj = self.projector[
-                (n * (n - 1) / 2) + j - ((n - j) * (n - j - 1) /2)
+                    j + (j * (j+1) / 2)
             ];
             if pjj != 0.0 { // If 0, parameter does not map to itself.
                 if pjj != 1.0 {
@@ -170,7 +180,6 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
                 out_der.expval_o[i] = der.expval_o[j];
                 out_der.ho[i] = der.ho[j];
                 // Modify the vectors inplace, we won't iterate on past values
-                b[i] = b[j];
                 x0[i] = x0[j];
                 unsafe {
                     let incx = self.gendim;
@@ -195,16 +204,16 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         out_der
     }
 
-    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64]) {
+    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64]) {
         if self.dim == 0 {
             error!("Tried to map from an empty parameter representation, this will
                 break conjugate gradient or diagonalisation. Dim = {}", self.dim);
             panic!("Undefined behavior.");
         }
 
-        let mut out_b = vec![0.0; self.gendim as usize];
         let mut out_x = vec![0.0; self.gendim as usize];
         let n = self.gendim as usize;
+        out_der.mu = der.mu;
 
         // Copy the visited vector
         for i in 0..der.mu as usize {
@@ -212,47 +221,90 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         }
 
         // Copy all other data
+        let mut k = 0;
+        let mut flag = false;
         for j in 0..n {
-            for i in 0..j {
+            for i in j..n {
                 let pij = self.projector[
-                    (n * (n - 1) / 2) + i - ((n - j) * (n - j - 1) /2)
+                    j + (i * (i+1) / 2)
                 ];
                 if pij != 0.0 {
-                    out_der.expval_o[j] = pij * der.expval_o[i];
-                    out_der.ho[j] = pij * der.ho[i];
-                    out_b[j] = pij * b[i];
-                    out_x[j] = pij * x0[i];
+                    out_der.expval_o[i] = pij * der.expval_o[k];
+                    out_der.ho[i] = pij * der.ho[k];
+                    out_x[i] = pij * x0[k];
                     unsafe {
                         let incx = self.dim;
                         let incy = self.gendim;
                         dcopy(
                             der.mu,
-                            &der.o_tilde[j..(self.dim*der.mu) as usize],
+                            &der.o_tilde[i..(self.dim*der.mu) as usize],
                             incx,
-                            &mut out_der.o_tilde[i..(self.gendim * der.mu) as usize],
+                            &mut out_der.o_tilde[k..(self.gendim * der.mu) as usize],
                             incy
                         );
                     }
-                    // Rest of the row is zero as stated in doc
-                    break;
+                    flag = true;
+                    //break;
                 }
+            }
+            if flag{
+                k += 1;
+                flag = false;
             }
         }
         unsafe {
             let incx = 1;
             let incy = 1;
-            dcopy(self.gendim, &out_b, incx, b, incy);
             dcopy(self.gendim, &out_x, incx, x0, incy);
         }
     }
 
-    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, b: &mut [f64], x0: &mut [f64]) {
+    fn update_delta_alpha_reduced_to_gen(&self, x0: &mut [f64]) {
         if self.dim == 0 {
             error!("Tried to map from an empty parameter representation, this will
                 break conjugate gradient or diagonalisation. Dim = {}", self.dim);
             panic!("Undefined behavior.");
         }
         let n = self.gendim as usize;
+        let mut out_x0 = vec![0.0; n];
+        println!("da = {:?}", x0);
+
+        // Copy all other data
+        // iter over transpose's diagonal
+        // Copy all other data
+        let mut k = 0;
+        let mut flag = false;
+        for j in 0..n {
+            for i in j..n {
+                let pij = self.projector[
+                    j + (i * (i+1) / 2)
+                ];
+                if pij != 0.0 {
+                    out_x0[i] = pij * x0[k];
+                    flag = true;
+                    //break;
+                }
+            }
+            if flag{
+                k += 1;
+                flag = false;
+            }
+        }
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            dcopy(self.gendim, &out_x0, incx, x0, incy);
+        }
+    }
+
+    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64]) {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+        let n = self.gendim as usize;
+        out_der.mu = der.mu;
 
         // Copy the visited vector
         for i in 0..der.mu as usize {
@@ -261,10 +313,10 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
 
         // Copy all other data
         // iter over transpose's diagonal
-        let mut i: usize = 0;
+        let mut i = 0;
         for j in 0..n {
             let pjj = self.projector[
-                (n * (n - 1) / 2) + j - ((n - j) * (n - j - 1) /2)
+                    j + (j * (j+1) / 2)
             ];
             if pjj != 0.0 { // If 0, parameter does not map to itself.
                 if pjj != 1.0 {
@@ -274,7 +326,6 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
                 out_der.expval_o[i] = der.expval_o[j];
                 out_der.ho[i] = der.ho[j];
                 // Modify the vectors inplace, we won't iterate on past values
-                b[i] = b[j];
                 x0[i] = x0[j];
                 unsafe {
                     let incx = self.gendim;

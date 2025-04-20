@@ -70,7 +70,7 @@ pub struct DerivativeOperator {
 impl DerivativeOperator {
     fn new(n: i32, mu: i32, nsamp: f64, nsamp_int: usize, pfaff_off: usize, jas_off: usize, epsilon: f64) -> Self {
         DerivativeOperator {
-            o_tilde: vec![0.0; (n * mu) as usize].into_boxed_slice(),
+            o_tilde: vec![0.0; n as usize * nsamp as usize].into_boxed_slice(),
             expval_o: vec![0.0; n as usize].into_boxed_slice(),
             ho: vec![0.0; n as usize].into_boxed_slice(),
             visited: vec![0; nsamp as usize].into_boxed_slice(),
