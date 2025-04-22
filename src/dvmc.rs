@@ -2,7 +2,7 @@ use log::{info, error};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 use std::fmt::{Display, Debug};
-use blas::{idamax, daxpy, dcopy, dscal};
+use blas::{idamax, daxpy, dcopy, dscal, dnrm2};
 
 use crate::{VarParams, DerivativeOperator, SysParams, FockState, BitOps};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
@@ -36,6 +36,7 @@ pub struct VMCParams {
     pub optimise_gutzwiller: bool,
     pub optimise_jastrow: bool,
     pub optimise_orbital: bool,
+    pub conv_param_threshold: f64,
 }
 
 fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams) {
@@ -112,9 +113,6 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
     //    epsilon: vmcparams.epsilon,
     //};
     for opt_iter in 0..vmcparams.noptiter {
-        //println!("{:?}", params.fij);
-        //println!("x0 = {:?}", x0);
-        //println!("b = {:?}", b);
         sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
@@ -142,9 +140,6 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
         x0[0..sys.ngi].copy_from_slice(params.gi);
         param_map.update_reduced_representation(&work_der, &mut der, &mut x0);
-        //println!("Expval Full = {:?}", work_der.ho);
-        //println!("Expval Reduced = {:?}", der.ho);
-        //panic!("Stop.");
 
         // 68 misawa
         //let mut b: Vec<f64> = vec![0.0; der.n as usize];
@@ -178,9 +173,6 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         }
         //panic!("Stop!");
         param_map.update_delta_alpha_reduced_to_gen(&mut delta_alpha);
-        //println!("b = {:?}", b);
-        //println!("delta_alpha = {:?}", delta_alpha);
-        //panic!("Stop.");
         if vmcparams.optimise {
             unsafe {
                 let incx = 1;
@@ -229,6 +221,14 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         }
         // HARD CODE vij = vji
         // Slater Rescaling
+        let opt_delta = unsafe {
+            let incx = 1;
+            dnrm2(der.n, &delta_alpha, incx)
+        };
+        if opt_delta <= vmcparams.conv_param_threshold {
+            println!("Exit early, achieved convergence within {} iteration, update now under supplied threshold.", opt_iter+1);
+            return output_energy_array;
+        }
         unsafe {
             let incx = 1;
             let max = params.fij[idamax(sys.nfij as i32, &params.fij, incx) - 1];

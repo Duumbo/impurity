@@ -267,7 +267,6 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         }
         let n = self.gendim as usize;
         let mut out_x0 = vec![0.0; n];
-        println!("da = {:?}", x0);
 
         // Copy all other data
         // iter over transpose's diagonal

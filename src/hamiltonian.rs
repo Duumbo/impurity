@@ -19,7 +19,7 @@ use crate::{VarParams, Spin, SysParams};
 /// $$
 pub fn potential<T>(state: FockState<T>, proj: f64, pstate: &PfaffianState, sys: &SysParams) -> f64
 where
-    T: BitOps,
+    T: BitOps + std::fmt::Display,
 {
     let pot = ((state.spin_up & state.spin_down).count_ones() as f64) * sys.cons_u;
     trace!("Output potential <x|U|psi> = {:.2} for state |x> = {}", pot, state);

@@ -113,7 +113,7 @@ fn jastrow_undo_update<T>(
     index_skip: usize,
     n_sites: usize,
 ) where
-    T: BitOps,
+    T: BitOps + std::fmt::Display,
 {
     if spin_mask.check(index_j) {
         //*spin_mask = *spin_mask & (<T>::ones() >> (index_j + 1));
@@ -152,7 +152,7 @@ fn jastrow_do_update<T>(
     index_skip: usize,
     n_sites: usize,
 ) where
-    T: BitOps,
+    T: BitOps + std::fmt::Display,
 {
     if spin_mask.check(index_j) {
         //*spin_mask = *spin_mask & (<T>::ones() >> (index_j + 1));
@@ -192,7 +192,7 @@ fn jastrow_single_update<T>(
     index_i: usize,
     sign: bool,
 ) where
-    T: BitOps,
+    T: BitOps + std::fmt::Display,
 {
     if spin_mask.check(index_j) & spin_mask.check(index_i) {
         let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);

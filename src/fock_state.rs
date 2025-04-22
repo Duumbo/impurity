@@ -127,6 +127,18 @@ impl From<SpinState> for u8 {
     }
 }
 
+impl From<SpinState> for u16 {
+    fn from(other: SpinState) -> Self {
+        const NBYTES: usize = 2;
+        if ARRAY_SIZE > NBYTES {error!("Casting SpinState of size {} to <u16> discards overflowing bits.", SIZE)}
+        let mut tmp: [u8; NBYTES] = [0x00; NBYTES];
+        for i in 0..ARRAY_SIZE {
+            tmp[i] = other.state[i];
+        }
+        <u16>::from_be_bytes(tmp)
+    }
+}
+
 impl From<SpinState> for u32 {
     fn from(other: SpinState) -> Self {
         const NBYTES: usize = 4;
@@ -135,7 +147,7 @@ impl From<SpinState> for u32 {
         for i in 0..ARRAY_SIZE {
             tmp[i] = other.state[i];
         }
-        <u32>::from_ne_bytes(tmp)
+        <u32>::from_be_bytes(tmp)
     }
 }
 
@@ -147,7 +159,7 @@ impl From<SpinState> for u64 {
         for i in 0..ARRAY_SIZE {
             tmp[i] = other.state[i];
         }
-        <u64>::from_ne_bytes(tmp)
+        <u64>::from_be_bytes(tmp)
     }
 }
 
@@ -159,7 +171,7 @@ impl From<SpinState> for u128 {
         for i in 0..ARRAY_SIZE {
             tmp[i] = other.state[i];
         }
-        <u128>::from_ne_bytes(tmp)
+        <u128>::from_be_bytes(tmp)
     }
 }
 
@@ -375,6 +387,15 @@ impl std::ops::Shl<usize> for SpinState {
     }
 }
 
+impl fmt::Display for SpinState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in 0..ARRAY_SIZE {
+            write!(f, "{:0b} ", self.state[i])?;
+        }
+        write!(f, "")
+    }
+}
+
 /// The Fock state structure. Encodes the spins positions.
 /// # Definition
 /// This structure has two different fields, the spin up and spin down component.
@@ -392,14 +413,14 @@ impl std::ops::Shl<usize> for SpinState {
 /// assert_eq!(state_5_both << 2, state_20_both);
 /// ```
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct FockState<T> where T: From<SpinState>
+pub struct FockState<T> where T: From<SpinState> + std::fmt::Display
 {
     pub spin_up: T,
     pub spin_down: T,
     pub n_sites: usize,
 }
 
-impl<T: std::ops::Shl<usize, Output = T> + From<SpinState>> std::ops::Shl<usize> for FockState<T> {
+impl<T: std::ops::Shl<usize, Output = T> + From<SpinState> + std::fmt::Display> std::ops::Shl<usize> for FockState<T> {
     type Output = Self;
 
     fn shl(self, u: usize) -> Self::Output {
@@ -411,7 +432,7 @@ impl<T: std::ops::Shl<usize, Output = T> + From<SpinState>> std::ops::Shl<usize>
     }
 }
 
-impl<T: std::ops::Shr<usize, Output = T> + From<SpinState>> std::ops::Shr<usize> for FockState<T> {
+impl<T: std::ops::Shr<usize, Output = T> + From<SpinState> + std::fmt::Display> std::ops::Shr<usize> for FockState<T> {
     type Output = Self;
 
     fn shr(self, u: usize) -> Self::Output {
@@ -423,7 +444,7 @@ impl<T: std::ops::Shr<usize, Output = T> + From<SpinState>> std::ops::Shr<usize>
     }
 }
 
-impl<T: BitOps> fmt::Display for FockState<T> {
+impl<T: BitOps + std::fmt::Display> fmt::Display for FockState<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "|")?;
         for i in 0..self.n_sites {
@@ -449,7 +470,7 @@ pub trait Hopper {
     fn generate_all_exchange(self: &Self) -> Vec<(usize, usize)>;
 }
 
-impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
+impl<T: BitOps + From<SpinState> + std::fmt::Display> Hopper for FockState<T> {
     fn generate_all_hoppings(self: &FockState<T>, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)> {
         let sup = self.spin_up;
         let sdo = self.spin_down;
@@ -460,6 +481,7 @@ impl<T: BitOps + From<SpinState>> Hopper for FockState<T> {
         for j in 1..self.n_sites /2 + 1 {
             // See note 2024-06-08, rotate right gives all the horizontal links.
             // We need to go to j up to SIZE / 2
+            //
             let bitmask = <T>::from(bitmask[j - 1]);
             let mut possible_hoppings_up = (rot_right(sup, j, self.n_sites) ^ sup) & bitmask;
             let mut possible_hoppings_do = (rot_right(sdo, j, self.n_sites) ^ sdo) & bitmask;
@@ -562,7 +584,7 @@ pub trait RandomStateGeneration {
 }
 
 impl<T> RandomStateGeneration for FockState<T>
-where T: BitOps,
+where T: BitOps + std::fmt::Display,
     Standard: Distribution<T>
 {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {
