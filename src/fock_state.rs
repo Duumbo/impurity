@@ -5,6 +5,7 @@ use rand::Rng;
 use rand::distributions::{Distribution, Standard};
 use std::fmt;
 use log::error;
+use std::marker::Send;
 
 use strings::{UPARROW, DOWNARROW};
 
@@ -40,7 +41,8 @@ pub trait BitOps:
     std::ops::Shr<usize, Output = Self> +
     std::ops::Shl<usize, Output = Self> +
     std::ops::BitOr<Output = Self> +
-    From<SpinState>
+    From<SpinState> +
+    Sync
 {
     /// Provides the number of leading zeros in the bitstring. This gives the
     /// position of the first set bit in the string. This method is consistent
@@ -72,7 +74,7 @@ pub trait BitOps:
 /// built-in  methods. [BitOps::set] and [BitOps::check] are implemented by
 /// shifting a bitmask.
 impl<I> BitOps for I
-    where I: PrimInt + std::ops::BitXorAssign + std::ops::BitAndAssign + From<SpinState> + From<u8>
+    where I: PrimInt + std::ops::BitXorAssign + std::ops::BitAndAssign + From<SpinState> + From<u8> + Sync
 {
     #[inline(always)]
     fn leading_zeros(self) -> u32 {
@@ -413,14 +415,14 @@ impl fmt::Display for SpinState {
 /// assert_eq!(state_5_both << 2, state_20_both);
 /// ```
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct FockState<T> where T: From<SpinState> + std::fmt::Display
+pub struct FockState<T> where T: From<SpinState> + std::fmt::Display + Send
 {
     pub spin_up: T,
     pub spin_down: T,
     pub n_sites: usize,
 }
 
-impl<T: std::ops::Shl<usize, Output = T> + From<SpinState> + std::fmt::Display> std::ops::Shl<usize> for FockState<T> {
+impl<T: std::ops::Shl<usize, Output = T> + From<SpinState> + std::fmt::Display + Send> std::ops::Shl<usize> for FockState<T> {
     type Output = Self;
 
     fn shl(self, u: usize) -> Self::Output {
@@ -432,7 +434,7 @@ impl<T: std::ops::Shl<usize, Output = T> + From<SpinState> + std::fmt::Display> 
     }
 }
 
-impl<T: std::ops::Shr<usize, Output = T> + From<SpinState> + std::fmt::Display> std::ops::Shr<usize> for FockState<T> {
+impl<T: std::ops::Shr<usize, Output = T> + From<SpinState> + std::fmt::Display + Send> std::ops::Shr<usize> for FockState<T> {
     type Output = Self;
 
     fn shr(self, u: usize) -> Self::Output {
@@ -444,7 +446,7 @@ impl<T: std::ops::Shr<usize, Output = T> + From<SpinState> + std::fmt::Display> 
     }
 }
 
-impl<T: BitOps + std::fmt::Display> fmt::Display for FockState<T> {
+impl<T: BitOps + std::fmt::Display + Send> fmt::Display for FockState<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "|")?;
         for i in 0..self.n_sites {
@@ -470,7 +472,7 @@ pub trait Hopper {
     fn generate_all_exchange(self: &Self) -> Vec<(usize, usize)>;
 }
 
-impl<T: BitOps + From<SpinState> + std::fmt::Display> Hopper for FockState<T> {
+impl<T: BitOps + From<SpinState> + std::fmt::Display + Send> Hopper for FockState<T> {
     fn generate_all_hoppings(self: &FockState<T>, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)> {
         let sup = self.spin_up;
         let sdo = self.spin_down;
@@ -565,7 +567,7 @@ impl<T: BitOps + From<SpinState> + std::fmt::Display> Hopper for FockState<T> {
 }
 
 // Interface for random state generation
-impl<T: BitOps + std::fmt::Display> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
+impl<T: BitOps + std::fmt::Display + Send> Distribution<FockState<T>> for Standard where Standard: Distribution<T> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FockState<T> {
         let su = rng.gen::<T>();
         let sd = rng.gen::<T>();
@@ -584,7 +586,7 @@ pub trait RandomStateGeneration {
 }
 
 impl<T> RandomStateGeneration for FockState<T>
-where T: BitOps + std::fmt::Display,
+where T: BitOps + std::fmt::Display + Send,
     Standard: Distribution<T>
 {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {

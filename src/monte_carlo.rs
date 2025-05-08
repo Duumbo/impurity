@@ -2,6 +2,7 @@ use blas::daxpy;
 use log::{error, info, trace, warn};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
+use std::sync::Arc;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
@@ -34,7 +35,7 @@ use crate::hamiltonian::{kinetic, potential};
 #[inline(always)]
 fn propose_hopping
 <R: Rng + ?Sized,
-T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
+T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8> + Send>
 (
     state: &FockState<T>,
     pfaff_state: &PfaffianState,
@@ -54,7 +55,7 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
 }
 
 #[inline(always)]
-fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
+fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug + Send>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
     let kin = kinetic(state, pstate, proj, params, sys);
     let e = kin + potential(state, proj, pstate, sys);
     trace!("Hamiltonian application <x|H|psi> = {} for state: |x> = {}", e, state);
@@ -62,7 +63,7 @@ fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug>(state: F
 }
 
 #[inline(always)]
-fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
+fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
 (state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams)
 {
     compute_gutzwiller_der(state, sys.size, der);
@@ -71,7 +72,7 @@ fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display +
 }
 
 #[inline(always)]
-fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>(
+fn make_update<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>(
     n: &mut usize,
     proj: &mut f64,
     proj_copy: &mut f64,
@@ -126,7 +127,7 @@ fn warmup<T, R>(
     params: &VarParams,
     sys: &SysParams
 )
-where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display,
+where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + Send,
       R: Rng + ?Sized,
       Standard: Distribution<T>
 {
@@ -284,7 +285,7 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
 
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
-T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8>>
+T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
 (rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64, f64)
 where Standard: Distribution<T>
 {

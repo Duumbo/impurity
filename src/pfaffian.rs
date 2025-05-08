@@ -127,7 +127,7 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
 /// * __`state`__ - The state of the system.
 pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>, sys: &SysParams) -> PfaffianState
 where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     // Fij upup, updown, downup, downdown
     let n = state.spin_up.count_ones() as usize + state.spin_down.count_ones() as usize;

@@ -34,7 +34,7 @@ pub fn compute_gutzwiller_exp<T>(
     n_sites: usize,
 ) -> f64
 where
-    T: BitOps + From<u8> + std::ops::Shl<usize, Output = T> + Debug + std::fmt::Display,
+    T: BitOps + From<u8> + std::ops::Shl<usize, Output = T> + Debug + std::fmt::Display + Send,
 {
     // sum_i g_i n_i up n_i down
     let mut gutzwiller_sites = fock_state.spin_up & fock_state.spin_down;
@@ -56,7 +56,7 @@ pub fn compute_gutzwiller_der<T>(
     der: &mut DerivativeOperator,
 )
 where
-    T: BitOps + From<u8> + std::ops::Shl<usize, Output = T> + Debug + std::fmt::Display,
+    T: BitOps + From<u8> + std::ops::Shl<usize, Output = T> + Debug + std::fmt::Display + Send,
 {
     // sum_i g_i n_i up n_i down
     let mut gutzwiller_sites = fock_state.spin_up & fock_state.spin_down;

@@ -34,7 +34,7 @@ pub fn compute_jastrow_exp<T>(
     n_sites: usize,
 ) -> f64
 where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     let mut jastrow_out = 0.0;
     let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
@@ -73,7 +73,7 @@ pub fn compute_jastrow_der<T>(
     n_sites: usize,
 )
 where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     let mut regular_nor = !(fock_state.spin_up ^ fock_state.spin_down);
     regular_nor.mask_bits(n_sites);
@@ -113,7 +113,7 @@ fn jastrow_undo_update<T>(
     index_skip: usize,
     n_sites: usize,
 ) where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     if spin_mask.check(index_j) {
         //*spin_mask = *spin_mask & (<T>::ones() >> (index_j + 1));
@@ -152,7 +152,7 @@ fn jastrow_do_update<T>(
     index_skip: usize,
     n_sites: usize,
 ) where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     if spin_mask.check(index_j) {
         //*spin_mask = *spin_mask & (<T>::ones() >> (index_j + 1));
@@ -192,7 +192,7 @@ fn jastrow_single_update<T>(
     index_i: usize,
     sign: bool,
 ) where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     if spin_mask.check(index_j) & spin_mask.check(index_i) {
         let (n1, n2) = (fock_state.spin_up, fock_state.spin_down);
@@ -272,7 +272,7 @@ pub fn fast_update_jastrow<T>(
     previous_j: usize,
     new_j: usize,
 ) where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     // Undo previous fock state
     // 1/2 sum {i\neq j} v_{ij}(n_i - 1)(n_j - 1)

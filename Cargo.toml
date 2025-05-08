@@ -28,6 +28,7 @@ intel-mkl-src = {version = "0.8.1", features = ["mkl-dynamic-lp64-iomp"]}
 #openblas-src = "0.10.8"
 # For python interface
 pyo3 = {version = "0.21.2", features = ["extension-module"], optional = true}
+# Parallelism
 rayon = "1.10.0"
 # Mersenne Twister
 rand_mt = {version = "4.2.2", features = ["rand_core"]}
@@ -35,6 +36,8 @@ rand_mt = {version = "4.2.2", features = ["rand_core"]}
 indicatif = "0.17.8"
 # Colored terminal text
 colored = "3.0.0"
+# Selectively move into closure
+closure = "0.3.0"
 
 [dependencies.rand]
 version = "0.8.5"

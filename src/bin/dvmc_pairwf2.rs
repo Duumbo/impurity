@@ -1,8 +1,10 @@
 use impurity::optimisation::GenParameterMap;
 //use blas::dcopy;
 //use log::{debug, info};
-use rand_mt::Mt64;
+use rand_mt::{Mt19937GenRand64, Mt64};
 use rand::Rng;
+
+use rayon::ThreadPoolBuilder;
 //use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
@@ -13,18 +15,18 @@ use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyC
 type BitSize = u32;
 
 const SEED: u64 = 14;
-const SIZE: usize = 16;
+const SIZE: usize = 2;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1000;
+const NMCSAMP: usize = 250;
 const NBOOTSTRAP: usize = 1;
-const NMCWARMUP: usize = 1000;
+const NMCWARMUP: usize = 100;
 const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
-const _NTHREADS: usize = 1;
+const NTHREADS: usize = 8;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -56,13 +58,13 @@ const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-10;
 
 // 4 et 2 Sites
-//pub const HOPPINGS: [f64; SIZE*SIZE] = [
-//    0.0, 1.0, 1.0, 0.0,
-//    //0.0, 1.0, 1.0, 0.0,
-//    //1.0, 0.0, 0.0, 1.0,
-//    //1.0, 0.0, 0.0, 1.0,
-//    //0.0, 1.0, 1.0, 0.0
-//];
+pub const HOPPINGS: [f64; SIZE*SIZE] = [
+    0.0, 1.0, 1.0, 0.0,
+    //0.0, 1.0, 1.0, 0.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //1.0, 0.0, 0.0, 1.0,
+    //0.0, 1.0, 1.0, 0.0
+];
 
 // 7 Sites
 //pub const HOPPINGS: [f64; SIZE*SIZE] = [
@@ -115,24 +117,24 @@ const CONV_PARAM_THRESHOLD: f64 = 1e-10;
 //];
 
 // 16 Sites
-pub const HOPPINGS: [f64; SIZE*SIZE] = [
-    0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-    1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0,
-    0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
-    0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
-];
+//pub const HOPPINGS: [f64; SIZE*SIZE] = [
+//    0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+//    1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+//    0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+//    1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+//    0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
+//    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+//    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+//    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0,
+//    0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+//    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
+//    0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+//];
 //
 
 // Pairwf
@@ -228,6 +230,7 @@ fn log_energy_convs(e: &[f64], fp: &mut File) {
 
 fn main() {
     let mut fp = File::create("u_t_sweep").unwrap();
+    let pool = ThreadPoolBuilder::new().num_threads(NTHREADS).build_global().unwrap();
     writeln!(fp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
     let mut paramsfp = File::create("params").unwrap();
     writeln!(paramsfp, "{}", format!("# {} {} {}", SIZE, NMCSAMP, NOPTITER)).unwrap();
@@ -235,7 +238,13 @@ fn main() {
     // Initialize logger
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
-    let mut rng = Mt64::new(SEED);
+    let mut rng = Vec::new();
+    let mut rngs = Vec::new();
+    for i in 0..NTHREADS {
+        rng.push(Mt64::new(SEED + i as u64));
+        let rng_ptr: *mut Mt19937GenRand64 = &mut rng[i] as *mut _;
+        rngs.push(unsafe{&mut *rng_ptr});
+    }
 
     for nsweep_iter in 0..NRATIO_POINTS {
         let mut system_params = SysParams {
@@ -264,7 +273,7 @@ fn main() {
 
         let mut all_params: Vec<f64> = Vec::with_capacity(NGI + NVIJ + NFIJ);
         for _ in 0..(NGI + NVIJ + NFIJ) {
-            all_params.push(rng.gen());
+            all_params.push(rngs[0].gen());
         }
         let (gi, params) = all_params.split_at_mut(NGI);
         let (vij, fij) = params.split_at_mut(NVIJ);
@@ -298,15 +307,20 @@ fn main() {
             compute_energy_method: COMPUTE_ENERGY_METHOD,
             optimise_energy_method: OPTIMISE_ENERGY_METHOD,
             conv_param_threshold: CONV_PARAM_THRESHOLD,
+            nthreads: NTHREADS
         };
 
         let state: FockState<BitSize> = {
-            let mut tmp: FockState<BitSize> = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
+            let mut tmp: FockState<BitSize> = FockState::generate_from_nelec(&mut rngs[0], NELEC, SIZE);
             while tmp.spin_up.count_ones() != tmp.spin_down.count_ones() {
-                tmp = FockState::generate_from_nelec(&mut rng, NELEC, SIZE);
+                tmp = FockState::generate_from_nelec(&mut rngs[0], NELEC, SIZE);
             }
             tmp
         };
+        let mut states_vec = Vec::with_capacity(NTHREADS);
+        for i in 0..NTHREADS {
+            states_vec.push(state);
+        }
         let param_map = GenParameterMap {
             dim: N_INDEP_PARAMS as i32,
             gendim: (NFIJ + NGI + NVIJ) as i32,
@@ -316,7 +330,7 @@ fn main() {
             projector: Box::new(PARAMS_PROJECTOR),
         };
 
-        let e_array = variationnal_monte_carlo(&mut rng, state, &mut parameters, &mut system_params, &vmcparams, &param_map);
+        let e_array = variationnal_monte_carlo(&mut rngs, &mut states_vec, &mut parameters, &mut system_params, &vmcparams, &param_map);
         //write_energy(&mut fp, &e_array);
 
         log_energy_convs(&e_array, &mut paramsfp);
