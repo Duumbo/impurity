@@ -3,6 +3,7 @@ use impurity::optimisation::GenParameterMap;
 //use log::{debug, info};
 use rand_mt::{Mt19937GenRand64, Mt64};
 use rand::Rng;
+use std::mem;
 
 use rayon::ThreadPoolBuilder;
 //use indicatif::{ProgressBar, ProgressStyle};
@@ -21,12 +22,12 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 250;
+const NMCSAMP: usize = 200;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 100;
 const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
-const NTHREADS: usize = 8;
+const NTHREADS: usize = 12;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -239,12 +240,10 @@ fn main() {
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
     let mut rng = Vec::new();
-    let mut rngs = Vec::new();
     for i in 0..NTHREADS {
         rng.push(Mt64::new(SEED + i as u64));
-        let rng_ptr: *mut Mt19937GenRand64 = &mut rng[i] as *mut _;
-        rngs.push(unsafe{&mut *rng_ptr});
     }
+    let mut rngs: Vec<&mut Mt64> = rng.iter_mut().collect();
 
     for nsweep_iter in 0..NRATIO_POINTS {
         let mut system_params = SysParams {
@@ -336,4 +335,5 @@ fn main() {
         log_energy_convs(&e_array, &mut paramsfp);
 
     }
+    mem::drop(rng);
 }
