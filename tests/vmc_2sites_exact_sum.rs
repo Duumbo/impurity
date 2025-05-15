@@ -322,9 +322,11 @@ fn comupte_energy_from_all_states() {
         clean_update_frequency: CLEAN_UPDATE_FREQUENCY,
         nmcwarmup: NMCWARMUP,
         nmcsample: NMCSAMP,
+        nwarmupchains: 1,
         tolerance_sherman_morrison: TOL_SHERMAN,
         tolerance_singularity: TOL_SINGULARITY,
         pair_wavefunction: false,
+        _opt_iter: 0,
     };
     let mut fij = [
         0.0, 0.0, 0.0, 0.0,
@@ -389,36 +391,36 @@ fn comupte_energy_from_all_states() {
     }
     close(mean_energy, analytic(&parameters), 1e-12);
     mean_energy = mean_energy / norm(&parameters);
-    let mut otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
-    let mut expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited: Vec<usize> = vec![0; NMCSAMP];
+    let otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
+    let expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited: Vec<usize> = vec![0; NMCSAMP];
     let mut der = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
+        o_tilde: otilde.into_boxed_slice(),
+        expval_o: expvalo.into_boxed_slice(),
+        ho: expval_ho.into_boxed_slice(),
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: NMCSAMP as f64,
         nsamp_int: 1,
         mu: -1,
-        visited: &mut visited,
+        visited: visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: 0.0,
     };
-    let mut otilde_pair: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
-    let mut expvalo_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited_pair: Vec<usize> = vec![0; NMCSAMP];
+    let otilde_pair: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
+    let expvalo_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho_pair: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited_pair: Vec<usize> = vec![0; NMCSAMP];
     let mut der_pair = DerivativeOperator {
-        o_tilde: &mut otilde_pair,
-        expval_o: &mut expvalo_pair,
-        ho: &mut expval_ho_pair,
+        o_tilde: otilde_pair.into_boxed_slice(),
+        expval_o: expvalo_pair.into_boxed_slice(),
+        ho: expval_ho_pair.into_boxed_slice(),
         n: (sys.size*sys.size + NVIJ + NGI) as i32,
         nsamp: NMCSAMP as f64,
         nsamp_int: 1,
         mu: -1,
-        visited: &mut visited_pair,
+        visited: visited_pair.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: 0.0,
@@ -444,7 +446,7 @@ fn comupte_energy_from_all_states() {
     // Test derivatives
     let exp_val = analytic_derivatives_expval(&parameters);
     println!("Checking <O>");
-    print_der(der_pair.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
+    print_der(&der_pair.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
@@ -454,7 +456,7 @@ fn comupte_energy_from_all_states() {
 
     let exp_val_ho = analytic_ho_expval(&parameters);
     println!("Checking <HO>");
-    print_der(der_pair.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
+    print_der(&der_pair.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {

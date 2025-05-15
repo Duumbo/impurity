@@ -19,6 +19,7 @@ const NELEC: usize = SIZE;
 const NMCSAMP: usize = 500;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 1000;
+const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
 const _NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
@@ -87,7 +88,7 @@ fn _save_otilde(fp: &mut File, der: &DerivativeOperator) {
     let mut c = vec![0.0; (der.n * der.n) as usize];
     println!("dim = {}", der.n * der.n);
     unsafe {
-        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, der.o_tilde, der.n, der.o_tilde, der.n, 0.0, &mut c, der.n);
+        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, &der.o_tilde, der.n, &der.o_tilde, der.n, 0.0, &mut c, der.n);
     }
     let mut outstr = "".to_owned();
     outstr.push_str(&format!("<O_kO_m> = "));
@@ -192,7 +193,7 @@ fn main() {
     // Initialize logger
     env_logger::init();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
-    let system_params = SysParams {
+    let mut system_params = SysParams {
         size: SIZE,
         nelec: NELEC,
         array_size: (SIZE + 7) / 8,
@@ -207,10 +208,12 @@ fn main() {
         nmcsample: NMCSAMP,
         nbootstrap: NBOOTSTRAP,
         nmcwarmup: NMCWARMUP,
+        nwarmupchains: NWARMUPCHAINS,
         mcsample_interval: MCSAMPLE_INTERVAL,
         tolerance_sherman_morrison: TOLERENCE_SHERMAN_MORRISSON,
         tolerance_singularity: TOLERENCE_SINGULARITY,
         pair_wavefunction: true,
+        _opt_iter: 0,
     };
 
     let mut rng = Mt64::new(SEED);
@@ -253,18 +256,18 @@ fn main() {
         tmp
     };
 
-    let mut otilde: Vec<f64> = vec![0.0; (4*NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
-    let mut work_otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
-    let mut expvalo: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
-    let mut work_expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut expval_ho: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
-    let mut work_expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
-    let mut visited: Vec<usize> = vec![0; NMCSAMP + 1];
-    let mut work_visited: Vec<usize> = vec![0; NMCSAMP + 1];
+    let otilde: Vec<f64> = vec![0.0; (4*NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
+    let work_otilde: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * (NMCSAMP + 1)];
+    let expvalo: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
+    let work_expvalo: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let expval_ho: Vec<f64> = vec![0.0; 4*NFIJ + NVIJ + NGI];
+    let work_expval_ho: Vec<f64> = vec![0.0; NFIJ + NVIJ + NGI];
+    let visited: Vec<usize> = vec![0; NMCSAMP + 1];
+    let work_visited: Vec<usize> = vec![0; NMCSAMP + 1];
     let mut derivative = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
+        o_tilde: otilde.into_boxed_slice(),
+        expval_o: expvalo.into_boxed_slice(),
+        ho: expval_ho.into_boxed_slice(),
         n: (4*NFIJ + NVIJ + NGI) as i32,
         nsamp: match COMPUTE_ENERGY_METHOD {
             EnergyComputationMethod::ExactSum => 1.0,
@@ -272,15 +275,15 @@ fn main() {
         },
         nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
-        visited: &mut visited,
+        visited: visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: EPSILON_SHIFT,
     };
     let mut work_derivative = DerivativeOperator {
-        o_tilde: &mut work_otilde,
-        expval_o: &mut work_expvalo,
-        ho: &mut work_expval_ho,
+        o_tilde: work_otilde.into_boxed_slice(),
+        expval_o: work_expvalo.into_boxed_slice(),
+        ho: work_expval_ho.into_boxed_slice(),
         n: (NFIJ + NVIJ + NGI) as i32,
         nsamp: match COMPUTE_ENERGY_METHOD {
             EnergyComputationMethod::ExactSum => 1.0,
@@ -288,7 +291,7 @@ fn main() {
         },
         nsamp_int: MCSAMPLE_INTERVAL,
         mu: -1,
-        visited: &mut work_visited,
+        visited: work_visited.into_boxed_slice(),
         pfaff_off: NGI + NVIJ,
         jas_off: NGI,
         epsilon: EPSILON_SHIFT,
@@ -305,6 +308,7 @@ fn main() {
     .progress_chars("##-"));
 
     for opt_iter in 0..NOPTITER {
+        system_params._opt_iter = opt_iter;
         let (mean_energy, accumulated_states, deltae, correlation_time) = {
             match COMPUTE_ENERGY_METHOD {
                 EnergyComputationMethod::MonteCarlo => compute_mean_energy(&mut rng, state, &parameters, &system_params, &mut derivative),
@@ -347,8 +351,8 @@ fn main() {
         unsafe {
             let incx = 1;
             let incy = 1;
-            daxpy(work_derivative.n, -mean_energy, work_derivative.expval_o, incx, work_derivative.ho, incy);
-            dcopy(work_derivative.n, work_derivative.ho, incx, &mut b, incy);
+            daxpy(work_derivative.n, -mean_energy, &work_derivative.expval_o, incx, &mut work_derivative.ho, incy);
+            dcopy(work_derivative.n, &work_derivative.ho, incx, &mut b, incy);
         }
         //save_otilde(&mut der_fp, &derivative);
         //save_otilde(&mut wder_fp, &work_derivative);
@@ -463,5 +467,5 @@ fn main() {
         opt_progress_bar.inc(1);
         opt_progress_bar.set_message(format!("Changed parameters by norm: {:+>.05e} Current energy: {:+>.05e}", opt_delta, mean_energy));
     }
-    opt_progress_bar.finish()
+    opt_progress_bar.finish();
 }

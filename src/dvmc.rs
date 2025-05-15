@@ -1,12 +1,15 @@
 use log::{info, error};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
+use rayon::iter::PanicFuse;
 use std::fmt::{Display, Debug};
-use blas::{idamax, daxpy, dcopy, dscal};
+use blas::{idamax, daxpy, dcopy, dscal, dnrm2};
+use rayon::ThreadPool;
+use std::thread;
 
 use crate::{VarParams, DerivativeOperator, SysParams, FockState, BitOps};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
-use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse};
+use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse, GenParameterMap, ReducibleGeneralRepresentation};
 
 #[derive(Debug)]
 pub enum EnergyOptimisationMethod {
@@ -31,18 +34,56 @@ pub struct VMCParams {
     pub dt: f64,
     pub optimisation_decay: f64,
     pub nparams: usize,
+    pub nthreads: usize,
     pub threshold: f64,
     pub optimise: bool,
     pub optimise_gutzwiller: bool,
     pub optimise_jastrow: bool,
     pub optimise_orbital: bool,
+    pub conv_param_threshold: f64,
+}
+
+fn merge_derivatives(der_vec: &[DerivativeOperator], nmc: usize, nthreads: usize) -> DerivativeOperator {
+    let mut out_der = DerivativeOperator::new(
+        der_vec[0].n,
+        0,
+        nmc as f64,
+        der_vec[0].nsamp_int,
+        der_vec[0].pfaff_off,
+        der_vec[0].jas_off,
+        der_vec[0].epsilon
+    );
+    let mut k = 0;
+    for i in 0..nthreads {
+        out_der.mu += der_vec[i].mu;
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            dcopy(
+                der_vec[i].n * der_vec[i].mu,
+                &der_vec[i].o_tilde,
+                incx,
+                &mut out_der.o_tilde[(der_vec[i].n * der_vec[i].mu) as usize * i..der_vec[i].n as usize * nmc],
+                incy
+            );
+            daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].expval_o, incx, &mut out_der.expval_o, incy);
+            daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].ho, incx, &mut out_der.ho, incy);
+        }
+        for j in 0..der_vec[i].mu as usize {
+            out_der.visited[k] = der_vec[i].visited[j];
+            k += 1;
+
+        }
+    }
+
+    out_der
 }
 
 fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams) {
-    for i in 0.. (sys.nfij + sys.nvij + sys.ngi) * sys.nmcsample {
+    for i in 0.. (der.n as usize) * sys.nmcsample {
         der.o_tilde[i] = 0.0;
     }
-    for i in 0..sys.nfij + sys.nvij + sys.ngi {
+    for i in 0..der.n as usize {
         der.expval_o[i] = 0.0;
         der.ho[i] = 0.0;
     }
@@ -52,40 +93,124 @@ fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams) {
     der.mu = -1;
 }
 
-pub fn variationnal_monte_carlo<R: Rng + ?Sized, T>(
-    rng: &mut R,
-    initial_state: FockState<T>,
+fn update_initial_state<T: BitOps + From<u8> + Display + Debug + Send + Sync>(
+    states: &mut [FockState<T>],
+    acc_states: &[FockState<T>],
+    nmcsample: usize,
+    nthreads: usize
+) {
+    for i in 0..nthreads {
+        states[i] = acc_states[i * nmcsample];
+    }
+}
+
+fn parallel_monte_carlo<T, R>(
+    rngs: &mut [&mut R],
+    initial_state: &[FockState<T>],
+    work_der_vec: &mut [DerivativeOperator],
+    vmcparams: &VMCParams,
+    params: & VarParams,
+    sys: & SysParams
+) -> (f64, Vec<FockState<T>>, f64, f64)
+where
+    T: BitOps + From<u8> + Display + Debug + Send + Sync,
+    R: Rng + ?Sized + Send + Sync,
+    Standard: Distribution<T> + Send
+{
+    let mut res_vec = Vec::new();
+    // Scoped thread because threads need to accept not static stack parameters
+    thread::scope(|scope| {
+        let threads: Vec<_> = (0..vmcparams.nthreads)
+            .map(|idx| {
+                // Wrestle the borrow checker
+                let wder_ptr = &mut work_der_vec[idx] as *mut _;
+                let rng_ptr = &mut *rngs[idx] as *mut R;
+                let state_ptr = &initial_state[idx] as *const _;
+                let rng = unsafe { &mut *rng_ptr};
+                let wder = unsafe { &mut *wder_ptr};
+                let state = unsafe { & *state_ptr};
+                scope.spawn(
+                || {
+                    compute_mean_energy(
+                        rng,
+                        *state,
+                        params,
+                        sys,
+                        wder
+                    )
+                }
+                )
+            })
+        .collect();
+
+        for handle in threads {
+            res_vec.push(handle.join().unwrap());
+        }
+    });
+    let mut out_energy = 0.0;
+    let mut out_states_vec = Vec::new();
+    let mut out_de = 0.0;
+    let mut out_corrtime = 0.0;
+    for thread in 0..vmcparams.nthreads {
+        //println!("Energy of thread {} = {}", thread, res_vec[thread].0);
+        out_energy += res_vec[thread].0;
+        out_de += res_vec[thread].2;
+        out_corrtime += res_vec[thread].3;
+        out_states_vec.append(&mut res_vec[thread].1);
+    }
+
+    //panic!("Stop!");
+    //(res_vec[0].0, res_vec[0].1.clone(), res_vec[0].2, res_vec[0].3)
+    (out_energy / vmcparams.nthreads as f64, out_states_vec, out_de / vmcparams.nthreads as f64, out_corrtime / vmcparams.nthreads as f64)
+}
+
+pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
+    rng: &mut [&mut R],
+    initial_state: &mut [FockState<T>],
     params: &mut VarParams,
-    sys: &SysParams,
-    vmcparams: &VMCParams
+    sys: &mut SysParams,
+    vmcparams: &VMCParams,
+    param_map: &GenParameterMap,
 ) -> Vec<f64>
-where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
+where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distribution<T> + std::marker::Send
 {
     let mut output_energy_array = vec![0.0; vmcparams.noptiter * 3];
-    let mut otilde: Vec<f64> = vec![0.0; (4*sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    //let mut work_otilde: Vec<f64> = vec![0.0; (sys.nfij + sys.nvij + sys.ngi) * (sys.nmcsample + 1)];
-    let mut expvalo: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    //let mut work_expvalo: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    let mut expval_ho: Vec<f64> = vec![0.0; 4*sys.nfij + sys.nvij + sys.ngi];
-    //let mut work_expval_ho: Vec<f64> = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
-    let mut visited: Vec<usize> = vec![0; sys.nmcsample + 1];
-    //let mut work_visited: Vec<usize> = vec![0; sys.nmcsample + 1];
-    let mut der = DerivativeOperator {
-        o_tilde: &mut otilde,
-        expval_o: &mut expvalo,
-        ho: &mut expval_ho,
-        n: (4*sys.nfij + sys.nvij + sys.ngi) as i32,
-        nsamp: match vmcparams.compute_energy_method {
+
+    let mut x0 = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
+    let mut b = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
+    let mut der = DerivativeOperator::new(
+        vmcparams.nparams as i32,
+        -1,
+        match vmcparams.compute_energy_method {
             EnergyComputationMethod::ExactSum => 1.0,
-            EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
+            EnergyComputationMethod::MonteCarlo => (sys.nmcsample * vmcparams.nthreads) as f64,
         },
-        nsamp_int: sys.mcsample_interval,
-        mu: -1,
-        visited: &mut visited,
-        pfaff_off: sys.ngi + sys.nvij,
-        jas_off: sys.ngi,
-        epsilon: vmcparams.epsilon,
-    };
+        sys.mcsample_interval,
+        param_map.n_independant_jastrow + param_map.n_independant_gutzwiller,
+        param_map.n_independant_gutzwiller,
+        vmcparams.epsilon
+    );
+    let mut work_der_vec = Vec::new();
+    for i in 0..vmcparams.nthreads {
+        let mut work_der = param_map.mapto_general_representation(&der, &mut x0);
+        work_der_vec.push(work_der);
+    }
+    //let mut der = DerivativeOperator {
+    //    o_tilde: &mut otilde,
+    //    expval_o: &mut expvalo,
+    //    ho: &mut expval_ho,
+    //    n: (4*sys.nfij + sys.nvij + sys.ngi) as i32,
+    //    nsamp: match vmcparams.compute_energy_method {
+    //        EnergyComputationMethod::ExactSum => 1.0,
+    //        EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
+    //    },
+    //    nsamp_int: sys.mcsample_interval,
+    //    mu: -1,
+    //    visited: &mut visited,
+    //    pfaff_off: sys.ngi + sys.nvij,
+    //    jas_off: sys.ngi,
+    //    epsilon: vmcparams.epsilon,
+    //};
     //let mut work_derivative = DerivativeOperator {
     //    o_tilde: &mut work_otilde,
     //    expval_o: &mut work_expvalo,
@@ -103,14 +228,18 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
     //    epsilon: vmcparams.epsilon,
     //};
     for opt_iter in 0..vmcparams.noptiter {
+        sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
-                EnergyComputationMethod::MonteCarlo => compute_mean_energy(rng, initial_state, params, sys, &mut der),
+                EnergyComputationMethod::MonteCarlo => {
+                    parallel_monte_carlo(rng, initial_state, &mut work_der_vec, vmcparams, params, sys)
+                },
                 EnergyComputationMethod::ExactSum => {
-                    (compute_mean_energy_exact(params, sys, &mut der), Vec::with_capacity(0), 0.0, 0.0)
+                    (compute_mean_energy_exact(params, sys, &mut work_der_vec[0]), Vec::with_capacity(0), 0.0, 0.0)
                 },
             }
         };
+        update_initial_state(initial_state, &_accumulated_states, sys.nmcsample, vmcparams.nthreads);
         // Save energy, error and correlation_time.
         output_energy_array[opt_iter * 3] = mean_energy;
         output_energy_array[opt_iter * 3 + 1] = deltae;
@@ -125,18 +254,19 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         //}
         //mapto_pairwf(&derivative, &mut work_derivative, sys);
 
-        let mut x0 = vec![0.0; sys.nfij + sys.nvij + sys.ngi];
         x0[(sys.ngi + sys.nvij)..(sys.ngi + sys.nvij + sys.nfij)].copy_from_slice(params.fij);
         x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
         x0[0..sys.ngi].copy_from_slice(params.gi);
+        //let work_der = merge_derivatives(&work_der_vec, sys.nmcsample, vmcparams.nthreads);
+        param_map.update_reduced_representation(&work_der_vec[0], &mut der, &mut x0);
 
         // 68 misawa
-        let mut b: Vec<f64> = vec![0.0; der.n as usize];
+        //let mut b: Vec<f64> = vec![0.0; der.n as usize];
         unsafe {
             let incx = 1;
             let incy = 1;
-            daxpy(der.n, -mean_energy, der.expval_o, incx, der.ho, incy);
-            dcopy(der.n, der.ho, incx, &mut b, incy);
+            daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
+            dcopy(der.n, &der.ho, incx, &mut b, incy);
         }
 
         let mut _flag: bool = true;
@@ -148,7 +278,7 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
                 conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax, vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg)
             },
         };
-        let mut delta_alpha = vec![0.0; vmcparams.nparams];
+        let mut delta_alpha = vec![0.0; param_map.gendim as usize];
         let mut j: usize = 0;
         for i in 0..vmcparams.nparams {
             if ignored_columns[i] {
@@ -160,6 +290,8 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
                 _flag = false;
             }
         }
+        //panic!("Stop!");
+        param_map.update_delta_alpha_reduced_to_gen(&mut delta_alpha);
         if vmcparams.optimise {
             unsafe {
                 let incx = 1;
@@ -208,6 +340,14 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         }
         // HARD CODE vij = vji
         // Slater Rescaling
+        let opt_delta = unsafe {
+            let incx = 1;
+            dnrm2(der.n, &delta_alpha, incx)
+        };
+        if opt_delta <= vmcparams.conv_param_threshold {
+            println!("Exit early, achieved convergence within {} iteration, update now under supplied threshold.", opt_iter+1);
+            return output_energy_array;
+        }
         unsafe {
             let incx = 1;
             let max = params.fij[idamax(sys.nfij as i32, &params.fij, incx) - 1];
@@ -228,6 +368,9 @@ where T: BitOps + From<u8> + Display + Debug, Standard: Distribution<T>
         //    );
         //}
         zero_out_derivatives(&mut der, sys);
+        for i in 0..vmcparams.nthreads {
+            zero_out_derivatives(&mut work_der_vec[i], sys);
+        }
         //print_delta_alpha(&delta_alpha, sys.ngi, sys.nvij, sys.nfij);
         //let opt_delta = unsafe {
         //    let incx = 1;

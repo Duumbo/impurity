@@ -12,7 +12,7 @@ pub fn compute_internal_product<T>(
     params: &VarParams,
     sys: &SysParams,
 ) -> f64
-where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T> + Send
 {
     let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
@@ -34,7 +34,7 @@ pub fn compute_internal_product_parts<T>(
     params: &VarParams,
     sys: &SysParams,
 ) -> (PfaffianState, f64)
-where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T>
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl<usize, Output = T> + Send
 {
     let (mut pfaffian_state, jastrow_exp, gutz_exp) = {
         (
@@ -55,7 +55,7 @@ pub fn fast_internal_product_no_otilde<T>(
     previous_proj: &mut f64,
     params: &VarParams,
 ) -> (f64, Vec<f64>, usize)
-where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T> + Send
 {
     // Rename things.
     let previous_i = hopping.0;
@@ -94,7 +94,7 @@ pub fn fast_internal_product<T>(
     previous_proj: &mut f64,
     params: &VarParams,
 ) -> (f64, Vec<f64>, usize)
-where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T>
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T> + Send
 {
     // Rename things.
     let previous_i = hopping.0;

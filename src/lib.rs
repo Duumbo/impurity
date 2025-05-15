@@ -51,23 +51,41 @@ impl<'a> std::fmt::Display for VarParams<'a> {
 
 /// The operator $O_k$
 /// TODOC
-pub struct DerivativeOperator<'a> {
-    pub o_tilde: &'a mut [f64],
-    pub expval_o: &'a mut [f64],
-    pub ho: &'a mut [f64],
+pub struct DerivativeOperator {
     /// Number of variationnal parameters
     pub n: i32,
     /// Number of monte-carlo sampling
     pub mu: i32,
     pub nsamp: f64,
     pub nsamp_int: usize,
-    pub visited: &'a mut [usize],
     pub pfaff_off: usize,
     pub jas_off: usize,
     pub epsilon: f64,
+    pub o_tilde: Box<[f64]>,
+    pub expval_o: Box<[f64]>,
+    pub ho: Box<[f64]>,
+    pub visited: Box<[usize]>,
 }
 
-impl<'a> std::fmt::Display for DerivativeOperator<'a> {
+impl DerivativeOperator {
+    fn new(n: i32, mu: i32, nsamp: f64, nsamp_int: usize, pfaff_off: usize, jas_off: usize, epsilon: f64) -> Self {
+        DerivativeOperator {
+            o_tilde: vec![0.0; n as usize * nsamp as usize].into_boxed_slice(),
+            expval_o: vec![0.0; n as usize].into_boxed_slice(),
+            ho: vec![0.0; n as usize].into_boxed_slice(),
+            visited: vec![0; nsamp as usize].into_boxed_slice(),
+            mu,
+            n,
+            nsamp,
+            nsamp_int,
+            pfaff_off,
+            jas_off,
+            epsilon
+        }
+    }
+}
+
+impl<'a> std::fmt::Display for DerivativeOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         let width = 10;
         let mut expval = "<O> = ".to_owned();
@@ -99,7 +117,7 @@ fn _save_otilde(der: &DerivativeOperator) {
     let mut c = vec![0.0; (der.n * der.n) as usize];
     println!("dim = {}", der.n * der.n);
     unsafe {
-        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, der.o_tilde, der.n, der.o_tilde, der.n, 0.0, &mut c, der.n);
+        dgemm(b"N"[0], b"T"[0], der.n, der.n, der.mu, 1.0, &der.o_tilde, der.n, &der.o_tilde, der.n, 0.0, &mut c, der.n);
     }
     let mut outstr = "".to_owned();
     outstr.push_str(&format!("<O_kO_m> = "));

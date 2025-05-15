@@ -19,7 +19,7 @@ use crate::{VarParams, Spin, SysParams};
 /// $$
 pub fn potential<T>(state: FockState<T>, proj: f64, pstate: &PfaffianState, sys: &SysParams) -> f64
 where
-    T: BitOps,
+    T: BitOps + std::fmt::Display + Send,
 {
     let pot = ((state.spin_up & state.spin_down).count_ones() as f64) * sys.cons_u;
     trace!("Output potential <x|U|psi> = {:.2} for state |x> = {}", pot, state);
@@ -40,7 +40,7 @@ where
 /// $$
 pub fn kinetic<T>(state: FockState<T>, previous_pstate: &PfaffianState, previous_proj: f64, params: &VarParams, sys: &SysParams) -> f64
 where
-    T: BitOps + From<SpinState> + std::fmt::Debug + std::fmt::Display
+    T: BitOps + From<SpinState> + std::fmt::Debug + std::fmt::Display + Send
 {
     let hops = state.generate_all_hoppings(&sys.hopping_bitmask);
 

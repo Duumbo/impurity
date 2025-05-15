@@ -127,7 +127,7 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
 /// * __`state`__ - The state of the system.
 pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>, sys: &SysParams) -> PfaffianState
 where
-    T: BitOps + std::fmt::Display,
+    T: BitOps + std::fmt::Display + Send,
 {
     // Fij upup, updown, downup, downdown
     let n = state.spin_up.count_ones() as usize + state.spin_down.count_ones() as usize;
@@ -658,9 +658,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut rng = SmallRng::seed_from_u64(42);
         // Size of the system
@@ -797,9 +799,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -840,9 +844,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -902,9 +908,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
@@ -982,9 +990,11 @@ mod tests {
             clean_update_frequency: 0,
             nmcwarmup: 0,
             nmcsample: 0,
+            nwarmupchains: 0,
             tolerance_sherman_morrison: 0.0,
             tolerance_singularity: 0.0,
             pair_wavefunction: false,
+            _opt_iter: 0,
         };
         let mut params = vec![0.0; 4 * SIZE * SIZE];
         // params[i+8*j] = f_ij
