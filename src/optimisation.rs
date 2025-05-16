@@ -1,3 +1,5 @@
+use core::panic;
+
 use blas::{daxpy, dcopy, ddot, dgemm, dgemv, dger, dscal};
 use lapack::dsyev;
 use log::{error, trace};
@@ -76,8 +78,9 @@ pub trait ReducibleGeneralRepresentation {
     /// Safety:
     /// b and x0 must have lenght self.gendim
     /// On exit, the range [self.dim..self.gendim] contains garbage.
-    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64],);
+    fn update_reduced_representation_no_otilde(&self, out_der: &mut DerivativeOperator, mu: i32, expval_o: &[f64], ho: &[f64], visited: &[usize], x0: &mut [f64]);
     fn update_delta_alpha_reduced_to_gen(&self, x0: &mut [f64]);
+    fn parallel_reduced_representation_otilde(&self, der: &DerivativeOperator, otilde: &mut [f64]);
 }
 
 impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
@@ -296,18 +299,18 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
         }
     }
 
-    fn update_reduced_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64]) {
+    fn update_reduced_representation_no_otilde(&self, out_der: &mut DerivativeOperator, mu: i32, expval_o: &[f64], ho: &[f64], visited: &[usize], x0: &mut [f64]) {
         if self.dim == 0 {
             error!("Tried to map from an empty parameter representation, this will
                 break conjugate gradient or diagonalisation. Dim = {}", self.dim);
             panic!("Undefined behavior.");
         }
         let n = self.gendim as usize;
-        out_der.mu = der.mu;
+        out_der.mu = mu;
 
         // Copy the visited vector
-        for i in 0..der.mu as usize {
-            out_der.visited[i] = der.visited[i];
+        for i in 0..mu as usize {
+            out_der.visited[i] = visited[i];
         }
 
         // Copy all other data
@@ -322,10 +325,44 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
                     error!("Parameters must map to themselfs with multiple 1.");
                     panic!("Undefined behavior.");
                 }
-                out_der.expval_o[i] = der.expval_o[j];
-                out_der.ho[i] = der.ho[j];
+                out_der.expval_o[i] = expval_o[j];
+                out_der.ho[i] = ho[j];
                 // Modify the vectors inplace, we won't iterate on past values
                 x0[i] = x0[j];
+                // Filling the independant parameter index
+                i += 1;
+            }
+        }
+        if i != self.dim as usize {
+            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
+            panic!("Undefined behavior.");
+        }
+    }
+
+    fn parallel_reduced_representation_otilde(&self, der: &DerivativeOperator, otilde: &mut [f64]) {
+        if self.dim == 0 {
+            error!("Tried to map from an empty parameter representation, this will
+                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
+            panic!("Undefined behavior.");
+        }
+        let n = self.gendim as usize;
+
+        // iter over transpose's diagonal
+        let mut i = 0;
+        for j in 0..n {
+            let pjj = self.projector[
+                    j + (j * (j+1) / 2)
+            ];
+            if pjj != 0.0 { // If 0, parameter does not map to itself.
+                if pjj != 1.0 {
+                    error!("Parameters must map to themselfs with multiple 1.");
+                    panic!("Undefined behavior.");
+                }
+                // Test for collision
+                if otilde[i] != 0.0 {
+                    error!("O tilde is not empty. Was it reset? Is there pointer collision?");
+                    panic!("Undefined behavior.");
+                }
                 unsafe {
                     let incx = self.gendim;
                     let incy = self.dim;
@@ -333,7 +370,7 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
                         der.mu,
                         &der.o_tilde[j..n*der.mu as usize],
                         incx,
-                        &mut out_der.o_tilde[i..(self.dim * der.mu) as usize],
+                        &mut otilde[i..(self.dim * der.mu) as usize],
                         incy
                     );
                 }
@@ -472,9 +509,9 @@ fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], di
         let z1: f64 = unsafe {
             ddot(
                 a.mu,
-                &a.o_tilde[k..a.n as usize + a.mu as usize * (k + 1)],
+                &a.o_tilde[k..a.mu as usize * (k + 1)],
                 a.n,
-                &a.o_tilde[k..a.n as usize + a.mu as usize * (k + 1)],
+                &a.o_tilde[k..a.mu as usize * (k + 1)],
                 a.n
             )
         };
@@ -503,6 +540,10 @@ fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], di
 
 fn cpy_segmented_matrix_to_dense(a: &DerivativeOperator, output_otilde: &mut [f64], output_expvalo: &mut [f64], ignore_idx: &[bool], dim: i32, nparams_opt: usize) {
     let mut j: usize = 0;
+    if a.mu == 0 {
+        error!("mu was 0 on entry, was it updated during copy?");
+        panic!("Will panic during this call during the copy.");
+    }
     for k in 0..dim as usize {
         if ignore_idx[k] {
             continue;
@@ -510,7 +551,7 @@ fn cpy_segmented_matrix_to_dense(a: &DerivativeOperator, output_otilde: &mut [f6
         unsafe {
             dcopy(
                 a.mu,
-                &a.o_tilde[k..a.n as usize + a.mu as usize * (k + 1)],
+                &a.o_tilde[k..a.mu as usize * (k + 1)],
                 a.n,
                 &mut output_otilde[j..a.mu as usize * (j+1)],
                 nparams_opt as i32

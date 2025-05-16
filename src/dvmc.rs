@@ -1,13 +1,11 @@
 use log::{info, error};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-use rayon::iter::PanicFuse;
 use std::fmt::{Display, Debug};
 use blas::{idamax, daxpy, dcopy, dscal, dnrm2};
-use rayon::ThreadPool;
 use std::thread;
 
-use crate::{VarParams, DerivativeOperator, SysParams, FockState, BitOps};
+use crate::{BitOps, DerivativeOperator, FockState, SysParams, VarParams};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
 use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse, GenParameterMap, ReducibleGeneralRepresentation};
 
@@ -43,44 +41,42 @@ pub struct VMCParams {
     pub conv_param_threshold: f64,
 }
 
-fn merge_derivatives(der_vec: &[DerivativeOperator], nmc: usize, nthreads: usize) -> DerivativeOperator {
-    let mut out_der = DerivativeOperator::new(
-        der_vec[0].n,
-        0,
-        nmc as f64,
-        der_vec[0].nsamp_int,
-        der_vec[0].pfaff_off,
-        der_vec[0].jas_off,
-        der_vec[0].epsilon
-    );
-    let mut k = 0;
-    for i in 0..nthreads {
-        out_der.mu += der_vec[i].mu;
-        unsafe {
-            let incx = 1;
-            let incy = 1;
-            dcopy(
-                der_vec[i].n * der_vec[i].mu,
-                &der_vec[i].o_tilde,
-                incx,
-                &mut out_der.o_tilde[(der_vec[i].n * der_vec[i].mu) as usize * i..der_vec[i].n as usize * nmc],
-                incy
-            );
-            daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].expval_o, incx, &mut out_der.expval_o, incy);
-            daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].ho, incx, &mut out_der.ho, incy);
+fn merge_derivatives(der: &mut DerivativeOperator, der_vec: &mut [DerivativeOperator], param_map: &GenParameterMap, nmc: usize, nthreads: usize, x0: &mut [f64]){
+    let mut acc_expvalo = &mut der_vec[0].expval_o;
+    let mut acc_ho = &mut der_vec[0].ho;
+    let mut acc_visited = &mut der_vec[0].visited;
+    let mut k = der_vec[0].mu as usize;
+    // Allocate only if you need to
+    if nthreads != 1 {
+        k = 0;
+        let mut expvalo = vec![0.0; param_map.gendim as usize].into_boxed_slice();
+        let mut ho = vec![0.0; param_map.gendim as usize].into_boxed_slice();
+        let mut visited = vec![0; nmc * nthreads].into_boxed_slice();
+        acc_expvalo = &mut expvalo;
+        acc_ho = &mut ho;
+        acc_visited = &mut visited;
+        for i in 0..nthreads {
+            unsafe {
+                let incx = 1;
+                let incy = 1;
+                daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].expval_o, incx, &mut acc_expvalo, incy);
+                daxpy(der_vec[i].n, 1.0 / nthreads as f64, &der_vec[i].ho, incx, &mut acc_ho, incy);
+            }
+            for j in 0..der_vec[i].mu as usize {
+                acc_visited[k] = der_vec[i].visited[j];
+                k += 1;
+            }
+            // TODO compactify otilde
         }
-        for j in 0..der_vec[i].mu as usize {
-            out_der.visited[k] = der_vec[i].visited[j];
-            k += 1;
-
-        }
+        param_map.update_reduced_representation_no_otilde(der, k as i32, &acc_expvalo, &acc_ho, &acc_visited, x0);
     }
-
-    out_der
+    else {
+        param_map.update_reduced_representation_no_otilde(der, k as i32, &acc_expvalo, &acc_ho, &acc_visited, x0);
+    }
 }
 
-fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams) {
-    for i in 0.. (der.n as usize) * sys.nmcsample {
+fn zero_out_derivatives(der: &mut DerivativeOperator, sys: &SysParams, nthreads: usize) {
+    for i in 0.. (der.n as usize) * sys.nmcsample * nthreads {
         der.o_tilde[i] = 0.0;
     }
     for i in 0..der.n as usize {
@@ -100,7 +96,7 @@ fn update_initial_state<T: BitOps + From<u8> + Display + Debug + Send + Sync>(
     nthreads: usize
 ) {
     for i in 0..nthreads {
-        states[i] = acc_states[i * nmcsample];
+        states[i] = acc_states[(i + 1) * nmcsample - 1];
     }
 }
 
@@ -108,6 +104,8 @@ fn parallel_monte_carlo<T, R>(
     rngs: &mut [&mut R],
     initial_state: &[FockState<T>],
     work_der_vec: &mut [DerivativeOperator],
+    param_map: &GenParameterMap,
+    otilde: &mut [f64],
     vmcparams: &VMCParams,
     params: & VarParams,
     sys: & SysParams
@@ -117,6 +115,19 @@ where
     R: Rng + ?Sized + Send + Sync,
     Standard: Distribution<T> + Send
 {
+    // If NTHREADS == 1, don't waste time to spawn threads.
+    if vmcparams.nthreads == 1 {
+        let out = compute_mean_energy(
+                        rngs[0],
+                        initial_state[0],
+                        params,
+                        sys,
+                        &mut work_der_vec[0]
+                    );
+        param_map.parallel_reduced_representation_otilde(&work_der_vec[0], otilde);
+        return out;
+    }
+
     let mut res_vec = Vec::new();
     // Scoped thread because threads need to accept not static stack parameters
     thread::scope(|scope| {
@@ -126,18 +137,25 @@ where
                 let wder_ptr = &mut work_der_vec[idx] as *mut _;
                 let rng_ptr = &mut *rngs[idx] as *mut R;
                 let state_ptr = &initial_state[idx] as *const _;
+                let otilde_ptr = &mut otilde[
+                    idx * sys.nmcsample * param_map.dim as usize ..
+                        (idx + 1) * sys.nmcsample * param_map.dim as usize
+                ] as *mut _;
                 let rng = unsafe { &mut *rng_ptr};
                 let wder = unsafe { &mut *wder_ptr};
                 let state = unsafe { & *state_ptr};
+                let otilde_slice = unsafe { &mut *otilde_ptr };
                 scope.spawn(
                 || {
-                    compute_mean_energy(
+                    let out = compute_mean_energy(
                         rng,
                         *state,
                         params,
                         sys,
                         wder
-                    )
+                    );
+                    param_map.parallel_reduced_representation_otilde(wder, otilde_slice);
+                    out
                 }
                 )
             })
@@ -164,6 +182,20 @@ where
     (out_energy / vmcparams.nthreads as f64, out_states_vec, out_de / vmcparams.nthreads as f64, out_corrtime / vmcparams.nthreads as f64)
 }
 
+fn compactify_otilde(der: &mut DerivativeOperator, mu_vec: &[i32], nmc: usize, nthreads: usize) {
+    if nthreads == 1 {
+        return;
+    }
+    let mut current_mu = mu_vec[0];
+    for i in 1..nthreads {
+        for j in 0..mu_vec[i] as usize {
+            der.o_tilde[j + (der.n * current_mu) as usize] = der.o_tilde[j + der.n as usize * nmc * i];
+        }
+        current_mu += mu_vec[i];
+    }
+
+}
+
 pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
     rng: &mut [&mut R],
     initial_state: &mut [FockState<T>],
@@ -171,7 +203,7 @@ pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
     sys: &mut SysParams,
     vmcparams: &VMCParams,
     param_map: &GenParameterMap,
-) -> Vec<f64>
+) -> (Vec<f64>, usize)
 where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distribution<T> + std::marker::Send
 {
     let mut output_energy_array = vec![0.0; vmcparams.noptiter * 3];
@@ -191,48 +223,16 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         vmcparams.epsilon
     );
     let mut work_der_vec = Vec::new();
-    for i in 0..vmcparams.nthreads {
-        let mut work_der = param_map.mapto_general_representation(&der, &mut x0);
+    for _ in 0..vmcparams.nthreads {
+        let work_der = param_map.mapto_general_representation(&der, &mut x0);
         work_der_vec.push(work_der);
     }
-    //let mut der = DerivativeOperator {
-    //    o_tilde: &mut otilde,
-    //    expval_o: &mut expvalo,
-    //    ho: &mut expval_ho,
-    //    n: (4*sys.nfij + sys.nvij + sys.ngi) as i32,
-    //    nsamp: match vmcparams.compute_energy_method {
-    //        EnergyComputationMethod::ExactSum => 1.0,
-    //        EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
-    //    },
-    //    nsamp_int: sys.mcsample_interval,
-    //    mu: -1,
-    //    visited: &mut visited,
-    //    pfaff_off: sys.ngi + sys.nvij,
-    //    jas_off: sys.ngi,
-    //    epsilon: vmcparams.epsilon,
-    //};
-    //let mut work_derivative = DerivativeOperator {
-    //    o_tilde: &mut work_otilde,
-    //    expval_o: &mut work_expvalo,
-    //    ho: &mut work_expval_ho,
-    //    n: (sys.nfij + sys.nvij + sys.ngi) as i32,
-    //    nsamp: match vmcparams.compute_energy_method {
-    //        EnergyComputationMethod::ExactSum => 1.0,
-    //        EnergyComputationMethod::MonteCarlo => sys.nmcsample as f64,
-    //    },
-    //    nsamp_int: sys.mcsample_interval,
-    //    mu: -1,
-    //    visited: &mut work_visited,
-    //    pfaff_off: sys.ngi + sys.nvij,
-    //    jas_off: sys.ngi,
-    //    epsilon: vmcparams.epsilon,
-    //};
     for opt_iter in 0..vmcparams.noptiter {
         sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
                 EnergyComputationMethod::MonteCarlo => {
-                    parallel_monte_carlo(rng, initial_state, &mut work_der_vec, vmcparams, params, sys)
+                    parallel_monte_carlo(rng, initial_state, &mut work_der_vec, &param_map, &mut der.o_tilde, vmcparams, params, sys)
                 },
                 EnergyComputationMethod::ExactSum => {
                     (compute_mean_energy_exact(params, sys, &mut work_der_vec[0]), Vec::with_capacity(0), 0.0, 0.0)
@@ -257,8 +257,16 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         x0[(sys.ngi + sys.nvij)..(sys.ngi + sys.nvij + sys.nfij)].copy_from_slice(params.fij);
         x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
         x0[0..sys.ngi].copy_from_slice(params.gi);
-        //let work_der = merge_derivatives(&work_der_vec, sys.nmcsample, vmcparams.nthreads);
-        param_map.update_reduced_representation(&work_der_vec[0], &mut der, &mut x0);
+        merge_derivatives(&mut der, &mut work_der_vec, param_map, sys.nmcsample, vmcparams.nthreads, &mut x0);
+        let mut mu_vec: Vec<i32> = vec![0; vmcparams.nthreads];
+        for i in 0..vmcparams.nthreads {
+            mu_vec[i] = work_der_vec[i].mu;
+        }
+        compactify_otilde(&mut der, &mu_vec, sys.nmcsample, vmcparams.nthreads);
+        //param_map.update_reduced_representation_no_otilde(&work_der, &mut der, &mut x0);
+
+        //println!("{:?}", der.o_tilde);
+        //panic!("Stop.");
 
         // 68 misawa
         //let mut b: Vec<f64> = vec![0.0; der.n as usize];
@@ -267,6 +275,14 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
             let incy = 1;
             daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
             dcopy(der.n, &der.ho, incx, &mut b, incy);
+        }
+        let b_nrm = unsafe {
+            let incx = 1;
+            dnrm2(param_map.dim, &b, incx)
+        };
+        if b_nrm <= 0.0 {
+            println!("Exit early, achieved convergence within {} iteration, reason: b vector norm <= 0.0 (derivatives too small)", opt_iter+1);
+            return (output_energy_array, opt_iter);
         }
 
         let mut _flag: bool = true;
@@ -342,17 +358,17 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         // Slater Rescaling
         let opt_delta = unsafe {
             let incx = 1;
-            dnrm2(der.n, &delta_alpha, incx)
+            dnrm2(param_map.gendim, &delta_alpha, incx)
         };
         if opt_delta <= vmcparams.conv_param_threshold {
             println!("Exit early, achieved convergence within {} iteration, update now under supplied threshold.", opt_iter+1);
-            return output_energy_array;
+            return (output_energy_array, opt_iter);
         }
         unsafe {
             let incx = 1;
             let max = params.fij[idamax(sys.nfij as i32, &params.fij, incx) - 1];
             if <f64>::abs(max) < 1e-16 {
-                error!("Pfaffian params are all close to 0.0. Rescaling might bring noise.");
+                error!("Pfaffian params are all close to 0.0 at iter {}. Rescaling might bring noise.", opt_iter);
                 panic!("Undefined behavior.");
             }
             info!("Max was: {}", max);
@@ -367,9 +383,9 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         //        1
         //    );
         //}
-        zero_out_derivatives(&mut der, sys);
+        zero_out_derivatives(&mut der, sys, vmcparams.nthreads);
         for i in 0..vmcparams.nthreads {
-            zero_out_derivatives(&mut work_der_vec[i], sys);
+            zero_out_derivatives(&mut work_der_vec[i], sys, 1);
         }
         //print_delta_alpha(&delta_alpha, sys.ngi, sys.nvij, sys.nfij);
         //let opt_delta = unsafe {
@@ -381,5 +397,5 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         //opt_progress_bar.set_message(format!("Changed params by norm: {:+>.05e} Current energy: {:+>.05e}", opt_delta, mean_energy));
     }
     //opt_progress_bar.finish()
-    output_energy_array
+    (output_energy_array, vmcparams.noptiter)
 }

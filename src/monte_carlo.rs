@@ -2,7 +2,6 @@ use blas::daxpy;
 use log::{error, info, trace, warn};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-use std::sync::Arc;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
