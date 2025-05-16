@@ -12,11 +12,11 @@ use std::io::Write;
 use impurity::{VarParams, SysParams, generate_bitmask, FockState, RandomStateGeneration};
 use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyComputationMethod, VMCParams};
 
-type BitSize = u8;
+type BitSize = u128;
 
-const SEED: u64 = 14;
-const SIZE_N: usize = 2;
-const SIZE_M: usize = 1;
+const SEED: u64 = 142;
+const SIZE_N: usize = 6;
+const SIZE_M: usize = 6;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -24,12 +24,12 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 100;
+const NMCSAMP: usize = 1000;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = 500;
 const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
-const NTHREADS: usize = 8;
+const NTHREADS: usize = 12;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -58,12 +58,12 @@ const N_JAST: usize = NVIJ;
 const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
-//const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
+const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
 //const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
-const N_INDEP_PARAMS: usize = 3;
-const SET_VIJ_ZERO: bool = true;
-const SET_GI_EQUAL: bool = true;
-const SET_PAIR_PFAFFIAN: bool = true;
+//const N_INDEP_PARAMS: usize = 3;
+const SET_VIJ_ZERO: bool = false;
+const SET_GI_EQUAL: bool = false;
+const SET_PAIR_PFAFFIAN: bool = false;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = {
     // Constructs hopping matrix for SITES_N*SITES_M
@@ -95,43 +95,43 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = {
 };
 
 // Pairwf
-const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = [
-    /* g0 */    1.0, // 0,
-    /* g1 */    1.0, 0.0, //
-    /* v01 */   0.0, 0.0, 0.0,
-    /* f00uu */ 0.0, 0.0, 0.0, 0.0,
-    /* f01uu */ 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f10uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f11uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f00ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    /* f01ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    /* f10ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    /* f11ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-    /* f00du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f01du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f10du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f11du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f00dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f01dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f10dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    /* f11dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-];
+//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = [
+//    /* g0 */    1.0, // 0,
+//    /* g1 */    1.0, 0.0, //
+//    /* v01 */   0.0, 0.0, 0.0,
+//    /* f00uu */ 0.0, 0.0, 0.0, 0.0,
+//    /* f01uu */ 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f10uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f11uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f00ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f01ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+//    /* f10ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+//    /* f11ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+//    /* f00du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f01du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f10du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f11du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f00dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f01dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f10dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//    /* f11dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+//];
 
 // General rep
-//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
-//    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
-//    let mut j = 0;
-//    let mut n = 0;
-//    while j < NFIJ + NVIJ + NGI {
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j += 1;
-//        n += 1;
-//    }
-//  if n != N_INDEP_PARAMS {
-//      panic!("Number of set independant params is not correct.");
-//  }
-//    param
-//};
+const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
+    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
+    let mut j = 0;
+    let mut n = 0;
+    while j < NFIJ + NVIJ + NGI {
+        param[j + (j * (j+1) / 2)] = 1.0;
+        j += 1;
+        n += 1;
+    }
+  if n != N_INDEP_PARAMS {
+      panic!("Number of set independant params is not correct.");
+  }
+    param
+};
 
 
 // General pairwf rep
@@ -265,7 +265,7 @@ fn main() {
         if SET_PAIR_PFAFFIAN {
             for i in 0..SIZE*SIZE {
                 parameters.fij[i] = 0.0;
-                parameters.fij[i +SIZE*SIZE] = 0.5;
+                //parameters.fij[i +SIZE*SIZE] = 0.5;
                 parameters.fij[i +2*SIZE*SIZE] = 0.0;
                 parameters.fij[i +3*SIZE*SIZE] = 0.0;
             }
@@ -311,6 +311,7 @@ fn main() {
             projector: Box::new(PARAMS_PROJECTOR),
         };
 
+        println!("Before starting.");
         let (e_array, noptiter) = variationnal_monte_carlo(&mut rngs, &mut states_vec, &mut parameters, &mut system_params, &vmcparams, &param_map);
         //write_energy(&mut fp, &e_array);
 

@@ -239,6 +239,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 },
             }
         };
+        println!("Finished computing an energy.");
         update_initial_state(initial_state, &_accumulated_states, sys.nmcsample, vmcparams.nthreads);
         // Save energy, error and correlation_time.
         output_energy_array[opt_iter * 3] = mean_energy;
