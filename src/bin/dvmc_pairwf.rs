@@ -361,7 +361,7 @@ fn main() {
         //spread_eigenvalues(&mut derivative);
         //println!("x0 in = {:?}", x0);
         let mut _flag: bool = true;
-        let mut bcopy = b.clone();
+        //let mut bcopy = b.clone();
         //let ignored_columns = exact_overlap_inverse(&work_derivative, &mut bcopy, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD);
         //conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG);
         //println!("Exact b: {:?}", bcopy);

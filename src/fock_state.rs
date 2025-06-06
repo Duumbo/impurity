@@ -206,7 +206,7 @@ impl BitOps for SpinState {
         for i in 0..meta_by {
             self.state[ARRAY_SIZE - 1 - i] &= 0;
         }
-        self.state[meta_by] &= 0xff << (8 - granular_by - 1);
+        self.state[meta_by - 1] &= 0xff << (8 - granular_by - 1);
     }
 
     fn rotate_left(self, by: u32) -> Self {

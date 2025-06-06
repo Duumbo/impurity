@@ -445,7 +445,7 @@ mod test {
         n_sites: usize
     ) -> f64
     where
-        T: BitOps + From<u8>,
+        T: BitOps + From<u8> + std::fmt::Display + Send,
     {
         let mut zeta: Vec<f64> = vec![];
         for i in 0..n_sites {

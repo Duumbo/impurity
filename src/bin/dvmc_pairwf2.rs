@@ -15,8 +15,8 @@ use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyC
 type BitSize = u128;
 
 const SEED: u64 = 142;
-const SIZE_N: usize = 6;
-const SIZE_M: usize = 6;
+const SIZE_N: usize = 2;
+const SIZE_M: usize = 2;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -26,10 +26,10 @@ const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
 const NMCSAMP: usize = 1000;
 const NBOOTSTRAP: usize = 1;
-const NMCWARMUP: usize = 500;
+const NMCWARMUP: usize = 100;
 const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = 1;
-const NTHREADS: usize = 12;
+const NTHREADS: usize = 4;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -39,31 +39,31 @@ const INITIAL_RATIO_UT: f64 = 8.0;
 const FINAL_RATIO_UT: f64 = 32.0;
 const NRATIO_POINTS: usize = 1;
 const EPSILON_CG: f64 = 1e-16;
-const EPSILON_SHIFT: f64 = 1e-3;
-const OPTIMISATION_TIME_STEP: f64 = 1e-2;
+const EPSILON_SHIFT: f64 = 1e0;
+const OPTIMISATION_TIME_STEP: f64 = 1e-3;
 const OPTIMISATION_DECAY: f64 = 0.0;
-const NOPTITER: usize = 1000;
+const NOPTITER: usize = 10000;
 const KMAX: usize = NPARAMS;
-const PARAM_THRESHOLD: f64 = 1e-3;
+const PARAM_THRESHOLD: f64 = 0.0;
 //const PARAM_THRESHOLD: f64 = 0.0;
 const OPTIMISE: bool = true;
 const OPTIMISE_GUTZ: bool = true;
 const OPTIMISE_JAST: bool = true;
 const OPTIMISE_ORB: bool = true;
 const COMPUTE_ENERGY_METHOD: EnergyComputationMethod = EnergyComputationMethod::MonteCarlo;
-const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ConjugateGradiant;
+const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ExactInverse;
 const _ENERGY_CONV_AVERAGE_SAMPLE: usize = 20;
 const N_GUTZ: usize = NGI;
 const N_JAST: usize = NVIJ;
 const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
-const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
-//const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+//const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
+const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
 //const N_INDEP_PARAMS: usize = 3;
 const SET_VIJ_ZERO: bool = false;
 const SET_GI_EQUAL: bool = false;
-const SET_PAIR_PFAFFIAN: bool = false;
+const SET_PAIR_PFAFFIAN: bool = true;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = {
     // Constructs hopping matrix for SITES_N*SITES_M
@@ -118,45 +118,45 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = {
 //];
 
 // General rep
-const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
-    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
-    let mut j = 0;
-    let mut n = 0;
-    while j < NFIJ + NVIJ + NGI {
-        param[j + (j * (j+1) / 2)] = 1.0;
-        j += 1;
-        n += 1;
-    }
-  if n != N_INDEP_PARAMS {
-      panic!("Number of set independant params is not correct.");
-  }
-    param
-};
-
-
-// General pairwf rep
 //const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
 //    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
 //    let mut j = 0;
 //    let mut n = 0;
-//    while j < NVIJ + NGI {
+//    while j < NFIJ + NVIJ + NGI {
 //        param[j + (j * (j+1) / 2)] = 1.0;
 //        j += 1;
 //        n += 1;
 //    }
-//    let mut j = NVIJ + NGI;
-//    while j < SIZE * SIZE + NVIJ + NGI{
-//        j += SIZE * SIZE;
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j -= SIZE * SIZE;
-//        j += 1;
-//        n += 1;
-//    }
-//    if n != N_INDEP_PARAMS {
-//        panic!("Number of set independant params is not correct.");
-//    }
+//  if n != N_INDEP_PARAMS {
+//      panic!("Number of set independant params is not correct.");
+//  }
 //    param
 //};
+
+
+// General pairwf rep
+const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
+    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
+    let mut j = 0;
+    let mut n = 0;
+    while j < NVIJ + NGI {
+        param[j + (j * (j+1) / 2)] = 1.0;
+        j += 1;
+        n += 1;
+    }
+    let mut j = NVIJ + NGI;
+    while j < SIZE * SIZE + NVIJ + NGI{
+        j += SIZE * SIZE;
+        param[j + (j * (j+1) / 2)] = 1.0;
+        j -= SIZE * SIZE;
+        j += 1;
+        n += 1;
+    }
+    if n != N_INDEP_PARAMS {
+        panic!("Number of set independant params is not correct.");
+    }
+    param
+};
 
 
 fn _sq(a: f64) -> f64 {

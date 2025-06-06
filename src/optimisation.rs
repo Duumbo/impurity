@@ -584,7 +584,7 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
     }
     // Shift smallest eigenvalues
     for i in 0..dim as usize {
-        work[i + dim as usize * i] += epsilon;
+        work[i + dim as usize * i] *= 1.0 + epsilon;
     }
     work
 }
@@ -695,11 +695,11 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
     let mut unfiltered_s = compute_s_explicit(&a.o_tilde, &a.expval_o, &a.visited, dim, a.mu, a.nsamp, epsilon);
     //println!("dim = {}, Unfiltered S = ", dim);
     //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
-    let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
+    let _new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
     //println!("ignore : {:?}", ignore);
-    let mut otilde = vec![0.0; new_dim * a.mu as usize];
-    let mut expvalo = vec![0.0; new_dim];
-    cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
+    //let mut otilde = vec![0.0; new_dim * a.mu as usize];
+    //let mut expvalo = vec![0.0; new_dim];
+   // cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
     //let filtered_s = compute_s_explicit(&otilde, &expvalo, a.visited, new_dim as i32, a.mu, a.nsamp);
     let mut eigenvalues = diagonalize_dense_matrix(&mut unfiltered_s, dim);
     //let eigenvectors = &unfiltered_s;
@@ -719,6 +719,7 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
 
     // Remove problematic eigenvalue
     let mut max = <f64>::MIN;
+    let mut _skip = 0;
     for e in eigenvalues.iter() {
         if *e > max {
             max = *e;
@@ -728,6 +729,7 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
     let mut i = 0;
     for e in eigenvalues.iter_mut() {
         if *e < threshold {
+            _skip += 1;
             *e = 0.0;
             ignore[i] = true;
         }

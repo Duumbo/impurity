@@ -400,6 +400,7 @@ mod test {
             // Get the index that are the same.
             let mut e_and = e_down & e_up;
             e_and.mask_bits(SIZE);
+            println!("before death");
             let mut ind: Vec<u8> = Vec::new();
             let mut i: u8 = e_and.leading_zeros().try_into().unwrap();
             while (i as usize) < SIZE {
