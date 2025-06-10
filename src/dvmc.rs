@@ -100,7 +100,7 @@ fn update_initial_state<T: BitOps + From<u8> + Display + Debug + Send + Sync>(
     }
 }
 
-fn parallel_monte_carlo<T, R>(
+pub fn parallel_monte_carlo<T, R>(
     rngs: &mut [&mut R],
     initial_state: &[FockState<T>],
     work_der_vec: &mut [DerivativeOperator],

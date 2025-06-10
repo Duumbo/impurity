@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, Criterion, BenchmarkId};
 use impurity::jastrow::{compute_jastrow_exp, fast_update_jastrow};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use impurity::{FockState, RandomStateGeneration};
+use impurity::{FockState, RandomStateGeneration, Spin};
 
 const MAX_N_SITES: usize = 128;
 type DATATYPE = u128;
@@ -12,24 +12,28 @@ pub fn bench_jastrow_number_of_sites(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
 
     // Setup the intial state
-    let mut params: [f64; MAX_N_SITES] = [0.0; MAX_N_SITES];
-    rng.fill(&mut params);
+    let mut params: [f64; MAX_N_SITES*MAX_N_SITES] = [0.0; MAX_N_SITES*MAX_N_SITES];
+    for i in 0..MAX_N_SITES*MAX_N_SITES {
+        params[i] = rng.gen();
+    }
     let mut res;
 
     // Setup the loop over the number of sites
     for i in 2..129 {
+        let mut hop = (0, 0, Spin::Up);
         // Setup the random state
-        let state: FockState<DATATYPE> = FockState::generate_from_nelec(&mut rng, i, MAX_N_SITES);
+        let state: FockState<DATATYPE> = FockState::generate_from_nelec(&mut rng, i + i%2, i);
 
         res = compute_jastrow_exp(state, black_box(&params), i);
+        let newstate = state.generate_hopping(&mut rng, state.n_sites.try_into().unwrap(), &mut hop);
         group.bench_with_input(BenchmarkId::new("Calcul complet", i), &i,
-            |b, i| b.iter(||{
-                compute_jastrow_exp(state, black_box(&params), *i);
-            }
-           ));
+        |b, i| b.iter(||{
+            compute_jastrow_exp(newstate, black_box(&params), *i);
+        }
+        ));
         group.bench_with_input(BenchmarkId::new("Fast update", i), &i,
             |b, _| b.iter(||{
-            fast_update_jastrow(&mut res, &params, &state, &newstate, state.n_sites, 3, 4);
+            fast_update_jastrow(&mut res, &params, &state, &newstate, state.n_sites, hop.0, hop.1);
             }));
     }
     group.finish();

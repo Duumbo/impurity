@@ -1,5 +1,5 @@
 const SIZE: usize = 128;
-const ARRAY_SIZE: usize = (SIZE + 7) / 8;
+pub const ARRAY_SIZE: usize = (SIZE + 7) / 8;
 /// System parameters
 /// TODOC
 #[derive(Debug)]
