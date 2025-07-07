@@ -39,6 +39,7 @@ pub struct VMCParams {
     pub optimise_jastrow: bool,
     pub optimise_orbital: bool,
     pub conv_param_threshold: f64,
+    pub filter_before_shift: bool,
 }
 
 fn merge_derivatives(der: &mut DerivativeOperator, der_vec: &mut [DerivativeOperator], param_map: &GenParameterMap, nmc: usize, nthreads: usize, x0: &mut [f64]){
@@ -214,7 +215,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         vmcparams.nparams as i32,
         -1,
         match vmcparams.compute_energy_method {
-            EnergyComputationMethod::ExactSum => 1.0,
+            EnergyComputationMethod::ExactSum => sys.nmcsample as f64,
             EnergyComputationMethod::MonteCarlo => (sys.nmcsample * vmcparams.nthreads) as f64,
         },
         sys.mcsample_interval,
@@ -227,20 +228,34 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         let work_der = param_map.mapto_general_representation(&der, &mut x0);
         work_der_vec.push(work_der);
     }
+    //match vmcparams.compute_energy_method {
+    //    EnergyComputationMethod::MonteCarlo => {
+    //    },
+    //    EnergyComputationMethod::ExactSum => {
+    //        der.nsamp = 1.0;
+    //    },
+    //}
     for opt_iter in 0..vmcparams.noptiter {
+        //println!("gi = {:?}", params.gi);
+        //println!("vij = {:?}", params.vij);
+        //println!("fij = {:?}", params.fij);
         sys._opt_iter = opt_iter;
         let (mean_energy, _accumulated_states, deltae, correlation_time) = {
             match vmcparams.compute_energy_method {
                 EnergyComputationMethod::MonteCarlo => {
-                    parallel_monte_carlo(rng, initial_state, &mut work_der_vec, &param_map, &mut der.o_tilde, vmcparams, params, sys)
+                    let (mean_energy, _accumulated_states, deltae, correlation_time) =
+                    parallel_monte_carlo(rng, initial_state, &mut work_der_vec, &param_map, &mut der.o_tilde, vmcparams, params, sys);
+                    update_initial_state(initial_state, &_accumulated_states, sys.nmcsample, vmcparams.nthreads);
+                    (mean_energy, _accumulated_states, deltae, correlation_time)
                 },
                 EnergyComputationMethod::ExactSum => {
-                    (compute_mean_energy_exact(params, sys, &mut work_der_vec[0]), Vec::with_capacity(0), 0.0, 0.0)
+                    let (mean_energy, _accumulated_states, deltae, correlation_time) =
+                    (compute_mean_energy_exact(params, sys, &mut work_der_vec[0]), Vec::with_capacity(0), 0.0, 0.0);
+                    param_map.parallel_reduced_representation_otilde(&work_der_vec[0], &mut der.o_tilde);
+                    (mean_energy, _accumulated_states, deltae, correlation_time)
                 },
             }
         };
-        println!("Finished computing an energy.");
-        update_initial_state(initial_state, &_accumulated_states, sys.nmcsample, vmcparams.nthreads);
         // Save energy, error and correlation_time.
         output_energy_array[opt_iter * 3] = mean_energy;
         output_energy_array[opt_iter * 3 + 1] = deltae;
@@ -259,6 +274,8 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         x0[sys.ngi..(sys.ngi + sys.nvij)].copy_from_slice(params.vij);
         x0[0..sys.ngi].copy_from_slice(params.gi);
         merge_derivatives(&mut der, &mut work_der_vec, param_map, sys.nmcsample, vmcparams.nthreads, &mut x0);
+        //println!("{:?}", work_der_vec[0].o_tilde);
+        //println!("{:?}", der.o_tilde);
         let mut mu_vec: Vec<i32> = vec![0; vmcparams.nthreads];
         for i in 0..vmcparams.nthreads {
             mu_vec[i] = work_der_vec[i].mu;
@@ -277,6 +294,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
             daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
             dcopy(der.n, &der.ho, incx, &mut b, incy);
         }
+        //println!("gm = {:?}", b);
         let b_nrm = unsafe {
             let incx = 1;
             dnrm2(param_map.dim, &b, incx)
@@ -289,39 +307,62 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         let mut _flag: bool = true;
         let ignored_columns = match vmcparams.optimise_energy_method {
             EnergyOptimisationMethod::ExactInverse => {
-                exact_overlap_inverse(&der, &mut b, vmcparams.epsilon, vmcparams.nparams as i32, vmcparams.threshold)
+                exact_overlap_inverse(&der, &mut b, vmcparams.epsilon, vmcparams.nparams as i32,
+                    vmcparams.threshold)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
-                conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax, vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg)
+                conjugate_gradiant(&der, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax,
+                    vmcparams.nparams as i32, vmcparams.threshold, vmcparams.epsilon_cg,
+                    vmcparams.filter_before_shift)
             },
         };
         let mut delta_alpha = vec![0.0; param_map.gendim as usize];
         let mut j: usize = 0;
+        let mut norm2 = 0.0;
         for i in 0..vmcparams.nparams {
             if ignored_columns[i] {
                 continue;
             }
             delta_alpha[i] = b[j];
+            norm2 += b[j] * b[j];
             j += 1;
             if !<f64>::is_finite(delta_alpha[i]) {
                 _flag = false;
+                error!("Parameter update contains NaN or Inf at iter {}.", opt_iter);
+                panic!("Undefined behavior");
             }
         }
-        //panic!("Stop!");
+        println!("norm2 = {}", norm2);
+        //if norm2 > 10000.0 {
+        //    unsafe {
+        //        dscal(vmcparams.nparams as i32, <f64>::sqrt(1e-2 / norm2), &mut delta_alpha, 1);
+        //    }
+        //}
+        //unsafe {
+        //    dscal(vmcparams.nparams as i32, <f64>::sqrt(1e0 / norm2), &mut delta_alpha, 1);
+        //}
+        //if opt_iter == 74 {
+        //    println!("da = {:?}", delta_alpha);
+        //    println!("norm2 = {}", norm2);
+        //}
+
         param_map.update_delta_alpha_reduced_to_gen(&mut delta_alpha);
         if vmcparams.optimise {
             unsafe {
                 let incx = 1;
                 let incy = 1;
                 let alpha = - vmcparams.dt * <f64>::exp(- (opt_iter as f64) * vmcparams.optimisation_decay);
+                //let alpha = 1.0;
                 if vmcparams.optimise_gutzwiller {
                     daxpy(sys.ngi as i32, alpha, &delta_alpha, incx, &mut params.gi, incy);
                 }
                 if vmcparams.optimise_jastrow {
-                    daxpy(sys.nvij as i32, alpha, &delta_alpha[sys.ngi..vmcparams.nparams], incx, &mut params.vij, incy);
+                    daxpy(sys.nvij as i32, alpha, &delta_alpha[sys.ngi..vmcparams.nparams], incx,
+                        &mut params.vij, incy);
                 }
                 if vmcparams.optimise_orbital {
-                    daxpy(sys.nfij as i32, alpha, &delta_alpha[sys.ngi + sys.nvij..vmcparams.nparams], incx, &mut params.fij, incy);
+                    daxpy(sys.nfij as i32, alpha, &delta_alpha[sys.ngi +
+                        sys.nvij..vmcparams.nparams], incx, &mut params.fij, incy);
                 }
             }
             info!("Correctly finished optimisation iteration {}", opt_iter);

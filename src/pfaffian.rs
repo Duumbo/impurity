@@ -229,7 +229,9 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
     for jj in 0..indices2.len() {
         for ii in 0..indices.len() {
             der.o_tilde[der.pfaff_off + indices2[jj] + size * indices[ii] + size*size + (der.n * der.mu) as usize] = -a[ii * n + (jj + off)];
+            //der.o_tilde[der.pfaff_off + indices2[jj] + size * indices[ii] + size*size + (der.n * der.mu) as usize] = a[ii * n + (jj + off)];
             trace!("~O_[{}, {}] = {}", der.pfaff_off + indices2[jj] + size * indices[ii] + size * size, der.mu, -a[ii * n + (jj + off)]);
+            //der.o_tilde[der.pfaff_off + indices[ii] + size * indices2[jj] + 2*size*size + (der.n * der.mu) as usize] = a[(jj + off) * n + ii];
             der.o_tilde[der.pfaff_off + indices[ii] + size * indices2[jj] + 2*size*size + (der.n * der.mu) as usize] = -a[(jj + off) * n + ii];
             trace!("~O_[{}, {}] = {}", der.pfaff_off + indices[ii] + size * indices2[jj] + 2 * size * size, der.mu, -a[(jj + off) * n + ii]);
         }
@@ -256,6 +258,190 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
     }
 }
 
+/// Gets the ratio of pfaffian after an exchange.
+/// # Fields
+/// * __`previous_pstate`__ - The pfaffian state to update.
+/// * __`previous_i`__ - The initial index of the jumping electron.
+/// * __`new_i`__ - The index of the electron after the jump.
+///
+/// # Returns
+/// * __`pfaff_up`__ - The new pfaffian ratio after the update.
+/// * __`new_b`__ - The new column and row in the matrix $A$.
+/// * __`col`__ - The index of the column and row that changed in the matrix $A$.
+pub fn get_pfaffian_ratio_exchange(
+    previous_pstate: &PfaffianState,
+    previous_i: usize,
+    new_i: usize,
+    previous_spin: Spin,
+    new_spin: Spin,
+    fij: &[f64],
+) -> (f64, Vec<f64>, Vec<f64>, usize, usize) {
+    // Rename
+    let indx_up = &previous_pstate.indices.0;
+    trace!("Up : {:?}", indx_up);
+    let indx_down = &previous_pstate.indices.1;
+    trace!("Down : {:?}", indx_down);
+    let n_sites = previous_pstate.n_sites;
+    let n_elec = previous_pstate.n_elec;
+
+    // Gen new vector b
+    // X_{ij}=F_{ij}^{\sigma_i,\sigma_j} - F_{ji}^{\sigma_j,\sigma_i}, tahara2008
+    // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
+    let mut new_b1: Vec<f64> = Vec::with_capacity(n_elec);
+    for iup in indx_up.iter() {
+        match previous_spin {
+            Spin::Up => {
+                if *iup == previous_i {
+                    trace!("Pushed 0.0");
+                    new_b1.push(0.0);
+                    continue;
+                }
+                trace!("Pushed X_[{}, {}], sector up up", new_i, iup);
+                new_b1.push(
+                    fij[new_i + n_sites * iup]
+                    -fij[iup + n_sites * new_i]);
+            }
+            Spin::Down => {
+                trace!("Pushed X_[{}, {}], sector up down", new_i, iup);
+                new_b1.push(
+                    fij[new_i + n_sites * iup + n_sites*n_sites]
+                    -fij[iup + n_sites * new_i + 2*n_sites*n_sites]);
+            }
+        };
+    }
+    for idown in indx_down.iter() {
+        match previous_spin {
+            Spin::Up => {
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
+                new_b1.push(
+                    fij[new_i + n_sites * idown + 2*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + n_sites*n_sites]);
+            }
+            Spin::Down => {
+                if *idown == previous_i {
+                    new_b1.push(0.0);
+                    trace!("Pushed 0.0");
+                    continue;
+                }
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
+                new_b1.push(
+                    fij[new_i + n_sites * idown + 3*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + 3*n_sites*n_sites]);
+            }
+        };
+    }
+    let mut new_b2: Vec<f64> = Vec::with_capacity(n_elec);
+    for iup in indx_up.iter() {
+        match new_spin {
+            Spin::Up => {
+                if *iup == previous_i {
+                    trace!("Pushed 0.0");
+                    new_b2.push(0.0);
+                    continue;
+                }
+                trace!("Pushed X_[{}, {}], sector up up", new_i, iup);
+                new_b2.push(
+                    fij[new_i + n_sites * iup]
+                    -fij[iup + n_sites * new_i]);
+            }
+            Spin::Down => {
+                trace!("Pushed X_[{}, {}], sector up down", new_i, iup);
+                new_b2.push(
+                    fij[new_i + n_sites * iup + n_sites*n_sites]
+                    -fij[iup + n_sites * new_i + 2*n_sites*n_sites]);
+            }
+        };
+    }
+    for idown in indx_down.iter() {
+        match new_spin {
+            Spin::Up => {
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
+                new_b2.push(
+                    fij[new_i + n_sites * idown + 2*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + n_sites*n_sites]);
+            }
+            Spin::Down => {
+                if *idown == previous_i {
+                    new_b2.push(0.0);
+                    trace!("Pushed 0.0");
+                    continue;
+                }
+                trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
+                new_b2.push(
+                    fij[new_i + n_sites * idown + 3*n_sites*n_sites]
+                    -fij[idown + n_sites * new_i + 3*n_sites*n_sites]);
+            }
+        };
+    }
+
+    // Get the column to replace.
+    trace!("Making hopping ({}, {}, {}, {})", previous_i, new_i, previous_spin, new_spin);
+    trace!("Index: up {:?}, down {:?}", indx_up, indx_down);
+    let col1 = match previous_spin {
+        Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
+        Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
+    };
+    let col2 = match new_spin {
+        Spin::Up => indx_up.iter().position(|&r| r == new_i).unwrap(),
+        Spin::Down => indx_down.iter().position(|&r| r == new_i).unwrap() + indx_up.len(),
+    };
+
+    // Compute the updated pfaffian.
+    trace!("Need to update col {}", col1);
+    trace!("X^[-1] = {}", previous_pstate);
+    trace!("X^[-1]_[col, i] = {:?}",
+            &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
+);
+    let mut c_matrix = vec![0.0; 4];
+    unsafe {
+        c_matrix[0] = ddot(
+            n_elec as i32,
+            &new_b1,
+            1,
+            &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
+            1,
+        );
+        c_matrix[1] = ddot(
+            n_elec as i32,
+            &new_b2,
+            1,
+            &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
+            1,
+        );
+        c_matrix[2] = ddot(
+            n_elec as i32,
+            &new_b1,
+            1,
+            &previous_pstate.inv_matrix[n_elec * col2..n_elec + n_elec * col2],
+            1,
+        );
+        c_matrix[3] = ddot(
+            n_elec as i32,
+            &new_b2,
+            1,
+            &previous_pstate.inv_matrix[n_elec * col2..n_elec + n_elec * col2],
+            1,
+        );
+    }
+    // Determinant of update
+    let det = c_matrix[0] * c_matrix[3] - c_matrix[1] * c_matrix[2];
+    // Correction
+    let mut y = vec![0.0; n_elec];
+    let correction = unsafe {
+        let trans = b"N"[0];
+        let m = n_elec as i32;
+        let incx = 0;
+        let incy = 0;
+        let alpha = previous_pstate.inv_matrix[col1 + n_elec * col2];
+        let beta = 0.0;
+        dgemv(trans, m, m, alpha, &previous_pstate.inv_matrix, m, &new_b1, incx, beta, &mut y, incy);
+        ddot(m, &new_b2, incx, &y, incy)
+    };
+    let pfaff_up = det + previous_pstate.inv_matrix[col1 + n_elec * col2]*new_b1[col2] + correction;
+    trace!("pfaffu_up = {}", pfaff_up);
+    (pfaff_up, new_b1, new_b2, col1, col2)
+}
+
 /// Gets the ratio of pfaffian after an update.
 /// # Fields
 /// * __`previous_pstate`__ - The pfaffian state to update.
@@ -271,7 +457,8 @@ pub fn get_pfaffian_ratio(
     previous_pstate: &PfaffianState,
     previous_i: usize,
     new_i: usize,
-    spin: Spin,
+    previous_spin: Spin,
+    new_spin: Spin,
     fij: &[f64],
 ) -> (f64, Vec<f64>, usize) {
     // Rename
@@ -287,7 +474,7 @@ pub fn get_pfaffian_ratio(
     // +0 -> upup, +SIZE^2 -> updown, +2*SIZE^2 -> downup, +3*SIZE^2 -> down down
     let mut new_b: Vec<f64> = Vec::with_capacity(n_elec);
     for iup in indx_up.iter() {
-        match spin {
+        match new_spin {
             Spin::Up => {
                 if *iup == previous_i {
                     trace!("Pushed 0.0");
@@ -308,7 +495,7 @@ pub fn get_pfaffian_ratio(
         };
     }
     for idown in indx_down.iter() {
-        match spin {
+        match new_spin {
             Spin::Up => {
                 trace!("Pushed X_[{}, {}], sector down up", new_i, idown);
                 new_b.push(
@@ -330,9 +517,9 @@ pub fn get_pfaffian_ratio(
     }
 
     // Get the column to replace.
-    trace!("Making hopping ({}, {}, {})", previous_i, new_i, spin);
+    trace!("Making hopping ({}, {}, {}, {})", previous_i, new_i, previous_spin, new_spin);
     trace!("Index: up {:?}, down {:?}", indx_up, indx_down);
-    let col = match spin {
+    let col = match previous_spin {
         Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
         Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
     };
@@ -755,10 +942,10 @@ mod tests {
             println!("Spin is up: {}", is_spin_up);
             let tmp =
                 if is_spin_up {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up, &params)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Up, Spin::Up, &params)
                 }
                 else {
-                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down, &params)
+                    get_pfaffian_ratio(&pfstate, initial_index, final_index, Spin::Down, Spin::Down, &params)
                 };
             println!("Ratio: {}", tmp.0);
             println!("B col: {:?}", tmp.1);
@@ -885,7 +1072,7 @@ mod tests {
         };
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
-        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, &params).0;
+        let pfaff_ratio = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Up, Spin::Up, &params).0;
         close(pfstate.pfaff * pfaff_ratio, pfstate2.pfaff, 1e-12);
     }
 
@@ -965,7 +1152,7 @@ mod tests {
         };
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, Spin::Down, &params);
         println!("B: {:?}", tmp.1);
         println!("Ratio: {}", tmp.0);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);
@@ -1051,7 +1238,7 @@ mod tests {
         let pfstate2 = construct_matrix_a_from_state(&params, state2, &sys);
         println!("Inverse Matrix: {}", pfstate2);
         println!("------------- Proposed Update ------------------");
-        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, &params);
+        let tmp = get_pfaffian_ratio(&pfstate, 6, 5, Spin::Down, Spin::Down, &params);
         println!("Ratio: {}", tmp.0);
         println!("B col: {:?}", tmp.1);
         close(pfstate.pfaff * tmp.0, pfstate2.pfaff, 1e-12);

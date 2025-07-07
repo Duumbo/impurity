@@ -3,7 +3,7 @@ use log::trace;
 use pyo3::{pyfunction, PyResult};
 
 use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
-use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller};
+use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller, fast_update_gutzwiller_spin_change};
 use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
 use crate::{BitOps, FockState, Spin, SpinState, VarParams, SysParams};
 
@@ -77,7 +77,39 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, spin, fij)
+    };
+
+    // Combine to get the internal product.
+    trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
+    trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
+    (pfaffian_ratio, b_vec, col)
+}
+
+pub fn fast_internal_product_spin_change<T>(
+    previous_state: &FockState<T>,
+    new_state: &FockState<T>,
+    previous_pstate: &PfaffianState,
+    hopping: &(usize, usize, Spin, Spin),
+    previous_proj: &mut f64,
+    params: &VarParams,
+) -> (f64, Vec<f64>, usize)
+where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::ops::Shl<usize, Output = T> + Send
+{
+    // Rename things.
+    let previous_i = hopping.0;
+    let new_i = hopping.1;
+    let previous_spin = hopping.2;
+    let new_spin = hopping.3;
+    let n_sites = new_state.n_sites;
+
+    let (pfaffian_ratio, b_vec, col) = {
+        let fij = &params.fij;
+        let vij = &params.vij;
+        let gi = &params.gi;
+        fast_update_jastrow(previous_proj, vij, previous_state, new_state, n_sites, previous_i, new_i);
+        fast_update_gutzwiller_spin_change(previous_proj, gi, previous_state, previous_i, new_i, previous_spin, new_spin);
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, previous_spin, new_spin, fij)
     };
 
     // Combine to get the internal product.
@@ -116,7 +148,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
             }
 
         }
-        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, fij)
+        get_pfaffian_ratio(previous_pstate, previous_i, new_i, spin, spin, fij)
     };
 
     // Combine to get the internal product.

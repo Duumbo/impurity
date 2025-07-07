@@ -342,6 +342,8 @@ pub mod optimisation;
 /// TODOC
 pub mod dvmc;
 
+pub mod green;
+
 #[cfg(feature = "python-interface")]
 #[pymodule]
 fn impurity(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -201,8 +201,10 @@ impl BitOps for SpinState {
     }
 
     fn mask_bits(&mut self, by: usize) {
-        let meta_by = by / 8;
-        let granular_by = by % 8;
+        let mask_by = SIZE - by;
+        let meta_by = mask_by / 8;
+        let granular_by = mask_by % 8;
+        println!("{}", granular_by);
         for i in 0..meta_by {
             self.state[ARRAY_SIZE - 1 - i] &= 0;
         }

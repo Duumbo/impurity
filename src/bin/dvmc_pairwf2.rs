@@ -15,8 +15,8 @@ use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyC
 type BitSize = u128;
 
 const SEED: u64 = 142;
-const SIZE_N: usize = 6;
-const SIZE_M: usize = 6;
+const SIZE_N: usize = 4;
+const SIZE_M: usize = 4;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -24,12 +24,12 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1000;
+const NMCSAMP: usize = 10000;
 const NBOOTSTRAP: usize = 1;
-const NMCWARMUP: usize = 500;
-const NWARMUPCHAINS: usize = 1;
+const NMCWARMUP: usize = 1000;
+const NWARMUPCHAINS: usize = 10;
 const MCSAMPLE_INTERVAL: usize = 1;
-const NTHREADS: usize = 12;
+const NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
@@ -39,13 +39,16 @@ const INITIAL_RATIO_UT: f64 = 8.0;
 const FINAL_RATIO_UT: f64 = 32.0;
 const NRATIO_POINTS: usize = 1;
 const EPSILON_CG: f64 = 1e-16;
-const EPSILON_SHIFT: f64 = 1e-3;
+const EPSILON_SHIFT: f64 = 1e-4;
 const OPTIMISATION_TIME_STEP: f64 = 1e-2;
 const OPTIMISATION_DECAY: f64 = 0.0;
-const NOPTITER: usize = 1000;
+const NOPTITER: usize = 10000;
 const KMAX: usize = NPARAMS;
+const FILTER_BEFORE_SHIFT: bool = true; // Better false (16 sites)
+//const PARAM_THRESHOLD: f64 = <f64>::EPSILON;
 const PARAM_THRESHOLD: f64 = 1e-3;
 //const PARAM_THRESHOLD: f64 = 0.0;
+//const PARAM_THRESHOLD: f64 = -<f64>::INFINITY;
 const OPTIMISE: bool = true;
 const OPTIMISE_GUTZ: bool = true;
 const OPTIMISE_JAST: bool = true;
@@ -58,12 +61,12 @@ const N_JAST: usize = NVIJ;
 const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
-const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
-//const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+//const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
+const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
 //const N_INDEP_PARAMS: usize = 3;
-const SET_VIJ_ZERO: bool = false;
-const SET_GI_EQUAL: bool = false;
-const SET_PAIR_PFAFFIAN: bool = false;
+const SET_VIJ_ZERO: bool = true;
+const SET_GI_EQUAL: bool = true;
+const SET_PAIR_PFAFFIAN: bool = true;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = {
     // Constructs hopping matrix for SITES_N*SITES_M
@@ -118,45 +121,45 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = {
 //];
 
 // General rep
-const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
-    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
-    let mut j = 0;
-    let mut n = 0;
-    while j < NFIJ + NVIJ + NGI {
-        param[j + (j * (j+1) / 2)] = 1.0;
-        j += 1;
-        n += 1;
-    }
-  if n != N_INDEP_PARAMS {
-      panic!("Number of set independant params is not correct.");
-  }
-    param
-};
-
-
-// General pairwf rep
 //const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
 //    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
 //    let mut j = 0;
 //    let mut n = 0;
-//    while j < NVIJ + NGI {
+//    while j < NFIJ + NVIJ + NGI {
 //        param[j + (j * (j+1) / 2)] = 1.0;
 //        j += 1;
 //        n += 1;
 //    }
-//    let mut j = NVIJ + NGI;
-//    while j < SIZE * SIZE + NVIJ + NGI{
-//        j += SIZE * SIZE;
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j -= SIZE * SIZE;
-//        j += 1;
-//        n += 1;
-//    }
-//    if n != N_INDEP_PARAMS {
-//        panic!("Number of set independant params is not correct.");
-//    }
+//  if n != N_INDEP_PARAMS {
+//      panic!("Number of set independant params is not correct.");
+//  }
 //    param
 //};
+
+
+// General pairwf rep
+const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
+    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
+    let mut j = 0;
+    let mut n = 0;
+    while j < NVIJ + NGI {
+        param[j + (j * (j+1) / 2)] = 1.0;
+        j += 1;
+        n += 1;
+    }
+    let mut j = NVIJ + NGI;
+    while j < SIZE * SIZE + NVIJ + NGI{
+        j += SIZE * SIZE;
+        param[j + (j * (j+1) / 2)] = 1.0;
+        j -= SIZE * SIZE;
+        j += 1;
+        n += 1;
+    }
+    if n != N_INDEP_PARAMS {
+        panic!("Number of set independant params is not correct.");
+    }
+    param
+};
 
 
 fn _sq(a: f64) -> f64 {
@@ -242,6 +245,7 @@ fn main() {
         let mut all_params: Vec<f64> = Vec::with_capacity(NGI + NVIJ + NFIJ);
         for _ in 0..(NGI + NVIJ + NFIJ) {
             all_params.push(rngs[0].gen());
+            //all_params.push(1.0);
         }
         let (gi, params) = all_params.split_at_mut(NGI);
         let (vij, fij) = params.split_at_mut(NVIJ);
@@ -251,7 +255,8 @@ fn main() {
             vij,
             size: SIZE
         };
-        let g = parameters.gi[0];
+        //let g = parameters.gi[0];
+        let g = 0.0;
         if SET_GI_EQUAL {
             for i in 0..NGI {
                 parameters.gi[i] = g;
@@ -269,6 +274,32 @@ fn main() {
                 parameters.fij[i +2*SIZE*SIZE] = 0.0;
                 parameters.fij[i +3*SIZE*SIZE] = 0.0;
             }
+        }
+        let mut max = <f64>::MIN;
+        for i in 0..NGI {
+            if max < parameters.gi[i] {
+                max = parameters.gi[i];
+            }
+        }
+        for i in 0..NVIJ {
+            if max < parameters.vij[i] {
+                max = parameters.vij[i];
+            }
+        }
+        for i in 0..NFIJ {
+            if max < parameters.fij[i] {
+                max = parameters.fij[i];
+            }
+        }
+        // Scale parameters
+        for i in 0..NGI {
+            parameters.gi[i] /= max;
+        }
+        for i in 0..NVIJ {
+            parameters.vij[i] /= max;
+        }
+        for i in 0..NFIJ {
+            parameters.fij[i] /= max;
         }
         //println!("{:?}", parameters.fij);
 
@@ -288,7 +319,8 @@ fn main() {
             compute_energy_method: COMPUTE_ENERGY_METHOD,
             optimise_energy_method: OPTIMISE_ENERGY_METHOD,
             conv_param_threshold: CONV_PARAM_THRESHOLD,
-            nthreads: NTHREADS
+            nthreads: NTHREADS,
+            filter_before_shift: FILTER_BEFORE_SHIFT
         };
 
         let state: FockState<BitSize> = {

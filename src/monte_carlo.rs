@@ -238,12 +238,40 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
         error!("The derivative operator current row was mu = {} on entry, is it reinitialized?", der.mu);
     }
     //let all_states = initial_state.generate_all_hoppings(sys.hopping_bitmask);
-    let all_states = vec![
-        FockState{spin_up: 128u8, spin_down: 128u8, n_sites: 2},
-        FockState{spin_up: 64u8, spin_down: 128u8, n_sites: 2},
-        FockState{spin_up: 64u8, spin_down: 64u8, n_sites: 2},
-        FockState{spin_up: 128u8, spin_down: 64u8, n_sites: 2},
-    ];
+    // Compute dimension of the available states.
+    let n_factorial = (1..sys.size + 1)
+        .try_fold(1usize, |acc, x| acc.checked_mul(x))
+        .expect("Size too big for exact Sum. Overflowed <usize> in number of states to compute.");
+    let ne_factorial = (1..sys.nelec/2 + 1)
+        .try_fold(1usize, |acc, x| acc.checked_mul(x))
+        .expect("Size too big for exact Sum. Overflowed <usize> in number of states to compute.");
+    let n_ne_factorial = (1..sys.size - sys.nelec/2 + 1)
+        .try_fold(1usize, |acc, x| acc.checked_mul(x))
+        .expect("Size too big for exact Sum. Overflowed <usize> in number of states to compute.");
+    let n_choose_ne = n_factorial / (
+        ne_factorial.checked_mul(n_ne_factorial)
+        .expect("Size too big for exact Sum. Overflowed <usize> in number of states to compute.")
+        );
+    let dim = n_choose_ne * n_choose_ne;
+
+    println!("Number of states to compute: {}", dim);
+
+    // Generate all states.
+    let mut states: Vec<u8> = vec![];
+    for mut s in (0..=<u8>::MAX).step_by(1<<(8-sys.size)) {
+        s.mask_bits(sys.size);
+        if s.count_ones()as usize == sys.nelec/2 {
+            states.push(s);
+        }
+    }
+    let mut all_states: Vec<FockState<u8>> = vec![];
+    for i in 0..n_choose_ne {
+        for j in 0..n_choose_ne {
+            all_states.push(
+                FockState { spin_up: states[i], spin_down: states[j], n_sites: sys.size }
+                );
+        }
+    }
 
     let mut energy = 0.0;
     let mut norm = 0.0;
@@ -254,32 +282,46 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
         let (pstate, proj) = compute_internal_product_parts(*state2, params, sys);
         norm += sq(<f64>::abs(pstate.pfaff) * <f64>::exp(proj));
         let rho = <f64>::abs(pstate.pfaff) * <f64>::exp(proj);
-        println!("rho = {}", sq(rho));
         compute_derivative_operator(*state2, &pstate, der, sys);
         state_energy = compute_hamiltonian(*state2, &pstate, proj, params, sys) * sq(rho);
         accumulate_expvals(&mut energy, state_energy, der, sq(rho));
         der.visited[der.mu as usize] = 1;
-        let mut outstr = "".to_owned();
-        outstr.push_str(&format!("H_mu O_k mu  ="));
         for i in 0..der.n as usize {
-            outstr.push_str(&format!("{}   ", der.o_tilde[i + (der.n * der.mu) as usize] * state_energy));
             der.o_tilde[i + (der.n * der.mu) as usize] *= rho;
         }
-        println!("{}", outstr);
         der.mu += 1;
 
     }
-    println!("energy = {}", energy);
     for i in 0.. der.n as usize {
         der.expval_o[i] *= 1.0 / norm;
         der.ho[i] *= 1.0 / norm;
     }
+    //println!("OTILDE = \n{}", _save_otilde(&der.o_tilde, der.mu as usize, der.n as usize));
     for i in 0..der.mu as usize {
         for j in 0..der.n as usize {
             der.o_tilde[j + i * der.n as usize] *= 1.0 / <f64>::sqrt(norm);
         }
     }
+    //println!("<O> = {:?}", der.expval_o);
+    //println!("<HO> = {:?}", der.ho);
+    //println!("<E> = {:?}", energy / norm);
     energy / norm
+}
+
+fn _save_otilde(der: &[f64], mu: usize, n: usize) -> String {
+    let width = 11;
+    let mut o_tilde = "".to_owned();
+    for m in 0..mu {
+        for i in 0..n  {
+            if i == m {
+                o_tilde.push_str(&format!("{:>width$.04e}", der[i + m * n]));
+            } else {
+                o_tilde.push_str(&format!("{:>width$.04e}", der[i + m * n]));
+            }
+        }
+        o_tilde.push_str("\n");
+    }
+    o_tilde
 }
 
 pub fn compute_mean_energy
