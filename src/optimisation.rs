@@ -385,13 +385,14 @@ impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
     }
 }
 
-fn gradient(x: &[f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], b: &mut [f64], epsilon: f64, dim: i32, mu: i32, nsamp: f64) {
+fn gradient(x: &[f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], b: &mut [f64], diag_epsilon: &[f64], dim: i32, mu: i32, nsamp: f64) {
     let alpha = -1.0;
     let incx = 1;
     let incy = 1;
     let mut work: Vec<f64> = vec![0.0; dim as usize];
     // Compute Ax
-    compute_w(&mut work, otilde, visited, expval_o, x, epsilon, dim, mu, nsamp);
+    compute_w(&mut work, otilde, visited, expval_o, x, diag_epsilon, dim, mu, nsamp);
+    //println!("Ax = {:?}", work);
     unsafe {
         // Compute b - Ax
         daxpy(dim, alpha, &work, incx, b, incy);
@@ -406,8 +407,12 @@ fn update_x(x: &mut [f64], pk: &[f64], alpha: f64, dim: i32) {
     };
 }
 
-fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], p: &[f64], epsilon: f64, dim: i32, mu: i32, nsamp: f64) {
+fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64], p: &[f64], diag_epsilon: &[f64], dim: i32, mu: i32, nsamp: f64) {
     // Computes Ap
+    if dim == 0 {
+        error!("Cannot compute the matrix product of dimension 0. Something happened with the cutting of dimensions that is not accounted for");
+        panic!("Undefined behavior.");
+    }
     let incx = 1;
     let incy = 1;
     let alpha = 1.0;
@@ -429,11 +434,15 @@ fn compute_w(w: &mut [f64], otilde: &[f64], visited: &[usize], expval_o: &[f64],
         trace!("Len(work) = {}, a.n = {}, a.mu = {}", work.len(), dim, mu);
         trace!("~O_[0, mu] = {:?}", otilde.iter().step_by(mu as usize).copied().collect::<Vec<f64>>());
         // Sometimes segfaults
-        dgemv(b"N"[0], dim, mu, 1.0 / nsamp, otilde, dim, &work, incx, epsilon, w, incy);
+        dgemv(b"N"[0], dim, mu, 1.0 / nsamp, otilde, dim, &work, incx, beta, w, incy);
+        //dgemv(b"N"[0], dim, mu, 1.0, otilde, dim, &work, incx, beta, w, incy);
         trace!("O_[m, mu] O^[T]_[mu, n] x_[n] = {:?}", w);
         let alpha = ddot(dim, expval_o, incx, p, incy);
         // 81 misawa
         daxpy(dim, - alpha, expval_o, incx, w, incy);
+    }
+    for i in 0..dim as usize {
+        w[i] += p[i] * diag_epsilon[i];
     }
 }
 
@@ -497,44 +506,69 @@ pub fn spread_eigenvalues(a: &mut DerivativeOperator) {
     }
 }
 
-fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], dim: i32, _diag_threshold: f64) -> usize {
+fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], dim: i32, _diag_threshold: f64, epsilon: f64, filter_before_shift: bool) -> (usize, Box<[f64]>) {
     // Loop over diagonal elements of S_km
     // Reminder, S_{kk} = 1/N_{\rm MC.} \sum_\mu \tilde{O}^*_{k\mu}\tilde{O}^T_{\mu k} -
     // \Re{\expval{O_k}}^2
 
-    let skip_param_count: usize = 0;
-    let mut diag_elem = vec![0.0; dim as usize];
+    let mut skip_param_count: usize = 0;
+    let mut diag_elem = vec![0.0; dim as usize].into_boxed_slice();
+    let mut diag_eps = vec![0.0; dim as usize].into_boxed_slice();
     for k in 0..dim as usize {
         // Start with 1/N_{\rm MC.} \sum_\mu \tilde{O}^*_{k\mu}\tilde{O}^T_{\mu k}
-        let z1: f64 = unsafe {
-            ddot(
-                a.mu,
-                &a.o_tilde[k..a.mu as usize * (k + 1)],
-                a.n,
-                &a.o_tilde[k..a.mu as usize * (k + 1)],
-                a.n
-            )
+        let z1: f64 = {
+            let mut tmp = 0.0;
+            for j in 0..a.mu as usize {
+                let elem = a.o_tilde[k + j*(dim as usize)];
+                tmp += elem * elem * a.visited[j] as f64;
+            }
+            tmp
+            //tmp / a.mu as f64
         };
 
         // Now \Re{\expval{O_k}}^2
         let z2: f64 = a.expval_o[k] * a.expval_o[k];
 
-        diag_elem[k] = z1 - z2;
+        if filter_before_shift {
+            diag_elem[k] = z1 - z2;
+        } else {
+            diag_elem[k] = (z1 - z2) * (1.0 + epsilon);
+        }
+
     }
 
     let mut max_elem = <f64>::MIN;
+    let mut min_elem = <f64>::MAX;
     for k in 0..dim as usize {
         if diag_elem[k] > max_elem {
             max_elem = diag_elem[k];
         }
+        if diag_elem[k] < min_elem {
+            min_elem = diag_elem[k];
+        }
     }
-    //for k in 0..dim as usize {
-    //    if diag_elem[k] < threshold {
-    //        skip_param_count += 1;
-    //        ignore_idx[k] = true;
-    //    }
-    //}
-    dim as usize - skip_param_count
+    if min_elem < _diag_threshold * max_elem {
+        for k in 0..dim as usize {
+            if diag_elem[k] < _diag_threshold * max_elem {
+                skip_param_count += 1;
+                _ignore_idx[k] = true;
+            }
+        }
+    }
+    let mut n = 0;
+    for i in 0..dim as usize {
+        if _ignore_idx[i] {
+            continue;
+        }
+        if filter_before_shift {
+            diag_eps[n] = diag_elem[i] * epsilon;
+        } else {
+            diag_eps[n] = diag_elem[i] * epsilon / (1.0 + epsilon);
+        }
+        n += 1;
+    }
+
+    (dim as usize - skip_param_count, diag_eps)
 
 }
 
@@ -545,15 +579,19 @@ fn cpy_segmented_matrix_to_dense(a: &DerivativeOperator, output_otilde: &mut [f6
         panic!("Will panic during this call during the copy.");
     }
     for k in 0..dim as usize {
+        if j > nparams_opt {
+            error!("Supplied dimension does not match allocated memory.");
+            panic!("Undefined behavior");
+        }
         if ignore_idx[k] {
             continue;
         }
         unsafe {
             dcopy(
                 a.mu,
-                &a.o_tilde[k..a.mu as usize * (k + 1)],
+                &a.o_tilde[k..(a.mu * a.n) as usize + k - a.n as usize],
                 a.n,
-                &mut output_otilde[j..a.mu as usize * (j+1)],
+                &mut output_otilde[j..nparams_opt * a.mu as usize - nparams_opt + j],
                 nparams_opt as i32
             );
         }
@@ -567,6 +605,8 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
     // Computes Ap
     let incx = 1;
     let alpha = 1.0/nsamp;
+    // Duumbo
+    //let alpha = 1.0;
     let beta = -(1.0);
     let mut otilde_w_visited = vec![0.0; (dim * mu) as usize];
     for i in 0..mu as usize {
@@ -574,17 +614,22 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
             otilde_w_visited[j + i*dim as usize] = otilde[j + i*dim as usize] * visited[i] as f64;
         }
     }
+    //println!("{}", _save_otilde(&otilde, mu as usize, dim as usize));
+    //println!("{:?}", visited);
 
     // Temp work vector
     let mut work = vec![0.0; (dim * dim) as usize];
     unsafe {
         // 80 misawa
         dger(dim, dim, 1.0, &expval_o, incx, &expval_o, incx, &mut work, dim);
-        dgemm(b"N"[0], b"T"[0], dim, dim, mu, alpha, &otilde_w_visited, dim, &otilde_w_visited, dim, beta, &mut work, dim);
+        dgemm(b"N"[0], b"T"[0], dim, dim, mu, alpha, &otilde, dim, &otilde_w_visited, dim, beta, &mut work, dim);
     }
     // Shift smallest eigenvalues
+    //println!("Before diag filter");
+    //println!("{}", _save_otilde(&work, dim as usize, dim as usize));
     for i in 0..dim as usize {
-        work[i + dim as usize * i] += epsilon;
+        work[i + dim as usize * i] *= 1.0 + epsilon;
+        //work[i + dim as usize * i] += epsilon;
     }
     work
 }
@@ -668,7 +713,7 @@ fn _compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f
     }
     for i in 0..dim as usize{
         for j in 0..dim as usize {
-           if eigenvalues[i] < 1e-1 {
+           if eigenvalues[i] < 1e-6 {
            work[j + dim as usize * i] *= 0.0;
            work_direct[j + dim as usize * i] *= 0.0;
            continue;
@@ -691,17 +736,53 @@ fn _compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f
 pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64, dim: i32, thresh: f64) -> Vec<bool>{
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
-    //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
-    let mut unfiltered_s = compute_s_explicit(&a.o_tilde, &a.expval_o, &a.visited, dim, a.mu, a.nsamp, epsilon);
     //println!("dim = {}, Unfiltered S = ", dim);
     //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
-    let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
-    //println!("ignore : {:?}", ignore);
-    let mut otilde = vec![0.0; new_dim * a.mu as usize];
-    let mut expvalo = vec![0.0; new_dim];
+    let (new_dim, _) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, true);
+    let mut otilde = vec![0.0; new_dim * a.mu as usize].into_boxed_slice();
+    let mut expvalo = vec![0.0; new_dim].into_boxed_slice();
     cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
+    //println!("{}", _save_otilde(&a.o_tilde, a.mu as usize, a.n as usize));
+    let mut filtered_s = compute_s_explicit(&otilde, &expvalo, &a.visited, new_dim as i32, a.mu, a.nsamp, epsilon);
+    let mut work = vec![0.0; new_dim];
+    unsafe {
+        dgemv(b"N"[0], new_dim as i32, new_dim as i32, 1.0, &filtered_s, new_dim as i32, &b, 1, 0.0, &mut work, 1);
+    }
+    println!("Ax = {:?}", work);
+    println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
+    println!("a.mu = {}, a.n = {}", a.mu, a.n);
+    println!("dim = {}, new_dim = {}", dim, new_dim);
+    let mut _unfiltered_s = compute_s_explicit(&a.o_tilde, &a.expval_o, &a.visited, dim as i32, a.mu, a.nsamp, epsilon);
+    //for i in 0..dim as usize {
+    //    if ignore[i] {
+    //        println!("{}", _save_otilde(&filtered_s, new_dim, new_dim));
+    //        println!("ignore : {:?}", ignore);
+    //        println!("{}", _save_otilde(&unfiltered_s, dim as usize, dim as usize));
+    //        panic!("stop");
+    //        break;
+
+    //    }
+    //}
+    // Test matrix are equal
+    //for i in 0..dim as usize {
+    //    for j in 0.. dim as usize {
+    //        if ! (filtered_s[j + i * dim as usize] == unfiltered_s[j + i * dim as usize]) {
+    //            panic!("Assertion");
+    //        }
+    //    }
+    //}
+    //println!("dim = {}, Unfiltered S = ", dim);
+    //println!("{}", _save_otilde(&unfiltered_s, dim as usize, dim as usize));
+    //let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
+    ////println!("ignore : {:?}", ignore);
+    //let mut otilde = vec![0.0; new_dim * a.mu as usize];
+    //let mut expvalo = vec![0.0; new_dim];
+    //cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
     //let filtered_s = compute_s_explicit(&otilde, &expvalo, a.visited, new_dim as i32, a.mu, a.nsamp);
-    let mut eigenvalues = diagonalize_dense_matrix(&mut unfiltered_s, dim);
+    let eigenvalues = diagonalize_dense_matrix(&mut filtered_s, new_dim as i32);
+    let _eigenvalues = diagonalize_dense_matrix(&mut _unfiltered_s, dim as i32);
+    //_compute_matrix_product(&mut s_copy, &unfiltered_s, &eigenvalues, dim);
+    //println!("S^[-1] = \n{}", _save_otilde(&s_copy, dim as usize, dim as usize));
     //let eigenvectors = &unfiltered_s;
     //println!("S = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
     //compute_matrix_product(&mut s_copy, &eigenvectors, &eigenvalues, dim);
@@ -715,32 +796,37 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
     //}
     //println!("UD^[-1]U^[T] = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
     //println!("x0 = {:?}", x0_raw);
-    //println!("eigenvalues: {:?}", eigenvalues);
+    println!("filted eigenvalues: {:?}", eigenvalues);
+    println!("eigenvalues: {:?}", _eigenvalues);
 
     // Remove problematic eigenvalue
-    let mut max = <f64>::MIN;
-    for e in eigenvalues.iter() {
-        if *e > max {
-            max = *e;
-        }
-    }
-    let threshold = thresh * max;
-    let mut i = 0;
-    for e in eigenvalues.iter_mut() {
-        if *e < threshold {
-            *e = 0.0;
-            ignore[i] = true;
-        }
-        i+=1;
-    }
-    //Invert matrix
-    for e in eigenvalues.iter_mut() {
-        if *e == 0.0 {
-            continue;
-        }
-        *e = 1.0 / *e;
-    }
-    compute_delta_from_eigenvalues(b, &unfiltered_s, &eigenvalues, dim);
+    //let mut max = <f64>::MIN;
+    ////println!("{:?}", eigenvalues);
+    //for e in eigenvalues.iter() {
+    //    if *e > max {
+    //        max = *e;
+    //    }
+    //}
+    //let threshold = thresh * max;
+    //let mut i = 0;
+    //for e in eigenvalues.iter_mut() {
+    //    if *e < threshold {
+    //        *e = 0.0;
+    //        //ignore[i] = true;
+    //    }
+    //    i+=1;
+    //}
+    ////println!("{:?}", ignore);
+    ////Invert matrix
+    //for e in eigenvalues.iter_mut() {
+    //    if *e == 0.0 {
+    //        continue;
+    //    }
+    //    *e = 1.0 / *e;
+    //}
+    compute_delta_from_eigenvalues(b, &filtered_s, &eigenvalues, new_dim as i32);
+    //println!("b = {:?}", b);
+
     return ignore;
 }
 
@@ -748,18 +834,22 @@ pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64
 /// TODOC
 /// Output
 /// b is the optimised parameter step.
-pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64) -> Vec<bool>
+pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64], epsilon: f64, kmax: usize, dim: i32, thresh: f64, epsilon_convergence: f64, filter_before_shift: bool) -> Vec<bool>
 {
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
     //println!("{}", save_otilde(a.o_tilde, a.mu as usize, a.n as usize));
     //println!("dim = {}, Unfiltered S = ", dim);
     //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
-    let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
+    let (new_dim, diag_epsilon) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, filter_before_shift);
+    //println!("diag : {:?}", diag_epsilon);
     //println!("ignore : {:?}", ignore);
-    let mut otilde = vec![0.0; new_dim * a.mu as usize];
-    let mut expvalo = vec![0.0; new_dim];
+    let mut otilde = vec![0.0; new_dim * a.mu as usize].into_boxed_slice();
+    let mut expvalo = vec![0.0; new_dim].into_boxed_slice();
     cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
+    //let mut filtered_s = compute_s_explicit(&otilde, &expvalo, &a.visited, new_dim as i32, a.mu, a.nsamp, epsilon);
+    //println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
+    //let diag_epsilon = compute_diag_epsilon(&otilde, &expvalo, epsilon, new_dim, a.mu);
     //let filtered_s = compute_s_explicit(&otilde, &expvalo, a.visited, new_dim as i32, a.mu, a.nsamp);
     //let eigenvectors = &unfiltered_s;
     //println!("S = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
@@ -782,9 +872,16 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     //println!("{}", save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
     //println!("{}", save_otilde(&otilde, a.mu as usize, new_dim as usize));
 
+    //unsafe {
+    //    dcopy(new_dim as i32, &b, 1, x0, 1);
+    //}
+    unsafe {
+        dscal(new_dim as i32, 0.0, x0, 1);
+    }
+
     trace!("Initial guess x_0: {:?}", x0);
     trace!("Initial equation b: {:?}", b);
-    let mut w: Vec<f64> = vec![0.0; new_dim];
+    let mut w = vec![0.0; new_dim].into_boxed_slice();
     // Error threshold
     let mut e = 0.0;
     for i in 0..dim as usize {
@@ -796,8 +893,8 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
     //println!("Error threshold e = {}", e);
-    gradient(x0, &otilde, &a.visited, &expvalo, b, epsilon, new_dim as i32, a.mu, a.nsamp);
-    let mut p = vec![0.0; new_dim];
+    gradient(x0, &otilde, &a.visited, &expvalo, b, &diag_epsilon, new_dim as i32, a.mu, a.nsamp);
+    let mut p = vec![0.0; new_dim].into_boxed_slice();
     let mut j: usize = 0;
     for i in 0..dim as usize {
         if ignore[i] {
@@ -816,15 +913,15 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
         trace!("p_{} : {:?}", k, p);
         //println!("r_{} : {:?}", k, b);
         //println!("p_{} : {:?}", k, p);
-        compute_w(&mut w, &otilde, &a.visited, &expvalo, &p, epsilon, new_dim as i32, a.mu, a.nsamp);
+        compute_w(&mut w, &otilde, &a.visited, &expvalo, &p, &diag_epsilon, new_dim as i32, a.mu, a.nsamp);
         //println!("w_{} : {:?}", k, w);
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
         trace!("alpha_{} : {}", k, alpha);
         //println!("alpha_{} : {}", k, alpha);
         //if alpha < 0.0 {
-        //    //error!("Input overlap matrix S was not positive-definite.");
-        //    break;
-        //    //panic!("p^T S p < 0.0");
+        //    error!("Input overlap matrix S was not positive-definite.");
+        //    //break;
+        //    panic!("p^T S p < 0.0");
         //}
         update_x(x0, &p, alpha, new_dim as i32);
         trace!("x_{} : {:?}", k+1, x0);
@@ -841,5 +938,6 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     unsafe {
         dcopy(new_dim as i32, x0, 1, b, 1);
     }
+    //println!("b = {:?}", b);
     ignore
 }

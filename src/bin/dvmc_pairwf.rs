@@ -35,6 +35,7 @@ const NOPTITER: usize = 1000;
 const KMAX: usize = NPARAMS;
 const PARAM_THRESHOLD: f64 = 1e-5;
 //const PARAM_THRESHOLD: f64 = 0.0;
+const FILTER_BEFORE_CUT: bool = true;
 const OPTIMISE: bool = true;
 const OPTIMISE_GUTZ: bool = true;
 const OPTIMISE_JAST: bool = true;
@@ -361,7 +362,7 @@ fn main() {
         //spread_eigenvalues(&mut derivative);
         //println!("x0 in = {:?}", x0);
         let mut _flag: bool = true;
-        let mut bcopy = b.clone();
+        //let bcopy = b.clone();
         //let ignored_columns = exact_overlap_inverse(&work_derivative, &mut bcopy, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD);
         //conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG);
         //println!("Exact b: {:?}", bcopy);
@@ -373,7 +374,7 @@ fn main() {
                 exact_overlap_inverse(&work_derivative, &mut b, EPSILON_SHIFT, NPARAMS as i32, PARAM_THRESHOLD)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
-                conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG)
+                conjugate_gradiant(&work_derivative, &mut b, &mut x0, EPSILON_SHIFT, KMAX, NPARAMS as i32, PARAM_THRESHOLD, EPSILON_CG, FILTER_BEFORE_CUT)
             },
         };
         let mut delta_alpha = vec![0.0; NPARAMS];

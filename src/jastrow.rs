@@ -87,15 +87,19 @@ where
             let k = indices[nk];
             if n1.check(i) ^ n2.check(k) {
                 if k > i {
-                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -0.5;
+                    //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -0.5;
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -1.0;
                 } else {
-                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -0.5;
+                    //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -0.5;
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -1.0;
                 }
             } else {
                 if k > i {
-                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 0.5;
+                    //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 0.5;
+                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 1.0;
                 } else {
-                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 0.5;
+                    //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 0.5;
+                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 1.0;
                 }
             }
         }
@@ -445,7 +449,7 @@ mod test {
         n_sites: usize
     ) -> f64
     where
-        T: BitOps + From<u8>,
+        T: BitOps + From<u8> + Send + Sync + std::fmt::Display,
     {
         let mut zeta: Vec<f64> = vec![];
         for i in 0..n_sites {

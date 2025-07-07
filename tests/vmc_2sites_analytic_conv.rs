@@ -254,7 +254,7 @@ fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
         * energy_individual_state(&State::F10, par);
     out_der[1] = individual_state(&State::F5, par)
         * energy_individual_state(&State::F5, par);
-    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
+    out_der[2] = - out_der[0] - out_der[1];
     //out_der[3] =
     //out_der[4] =
     //out_der[5] =
@@ -279,7 +279,7 @@ fn analytic_derivatives_expval(par: &VarParams) -> Vec<f64> {
     let mut out_der = vec![0.0; SIZE + 1 + 4*SIZE*SIZE];
     out_der[0] = sq(individual_state(&State::F10, par));
     out_der[1] = sq(individual_state(&State::F5, par));
-    out_der[2] = 0.5 * (- out_der[0] - out_der[1]);
+    out_der[2] = - out_der[0] - out_der[1];
     // fij
     out_der[3] = 1.0 * {
         <f64>::exp(par.gi[0] - par.vij[0]) / individual_state(&State::F10, par)

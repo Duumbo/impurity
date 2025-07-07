@@ -3,7 +3,7 @@ use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use crate::{BitOps, DerivativeOperator, FockState};
+use crate::{BitOps, DerivativeOperator, FockState, Spin};
 
 /// Computes the gutzwiller factor for a single fock state.
 /// # Arguments
@@ -114,6 +114,44 @@ pub fn fast_update_gutzwiller<T>(
     }
     if previous_other_state.check(new_index) {
         *previous_gutz += gutzwiller_params[new_index];
+    }
+}
+
+#[inline(always)]
+pub fn fast_update_gutzwiller_spin_change<T>(
+    previous_gutz: &mut f64,
+    gutzwiller_params: &[f64],
+    previous_fock: &FockState<T>,
+    previous_index: usize,
+    new_index: usize,
+    previous_spin: Spin,
+    new_spin: Spin,
+) where
+    T: BitOps + std::fmt::Display + std::marker::Send,
+{
+    match previous_spin {
+        Spin::Up => {
+            if previous_fock.spin_down.check(previous_index) {
+                *previous_gutz -= gutzwiller_params[previous_index];
+            }
+        },
+        Spin::Down => {
+            if previous_fock.spin_up.check(previous_index) {
+                *previous_gutz -= gutzwiller_params[previous_index];
+            }
+        },
+    }
+    match new_spin {
+        Spin::Up => {
+            if previous_fock.spin_down.check(previous_index) {
+                *previous_gutz += gutzwiller_params[new_index];
+            }
+        },
+        Spin::Down => {
+            if previous_fock.spin_up.check(previous_index) {
+                *previous_gutz += gutzwiller_params[new_index];
+            }
+        },
     }
 }
 
@@ -382,6 +420,7 @@ mod test {
         let mut rng = SmallRng::seed_from_u64(42);
         // This is a random test, run it five times.
         for test_iter in 0..10 {
+            println!("Test iter = {}", test_iter);
             let mut e_up = [0; ARRAY_SIZE];
             let mut e_down = [0; ARRAY_SIZE];
             for i in 0..ARRAY_SIZE {
