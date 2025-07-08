@@ -678,22 +678,45 @@ where T: BitOps + std::fmt::Display + Send,
     }
 
     fn generate_exchange<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, out_idx: &mut (usize, usize)) -> FockState<T> {
-        // TODO: This is not so cheap. Perhaps change this to generate only a pair.
-        let all_exchanges = self.generate_all_exchange();
+        let nup = self.spin_up.count_ones();
+        let ndo = self.spin_down.count_ones();
+        let rng_up = rng.gen::<u32>() % nup;
+        println!("idx up = {}", rng_up);
+        let rng_down = rng.gen::<u32>() % ndo;
+        println!("idx down = {}", rng_down);
 
-        let rand_index = rng.gen_range(0..all_exchanges.len());
-        let exchange = all_exchanges[rand_index];
+        // Get up idx
+        let mut sup = self.spin_up;
+        let mut sdo = self.spin_down;
+        let mut i = sup.leading_zeros();
+        let mut k = 0;
+        while k != rng_up {
+            println!("i = {}", i);
+            println!("sup = {}", sup);
+            sup.set(i as usize);
+            i = sup.leading_zeros();
+            k += 1;
+        }
+        let mut j = sdo.leading_zeros();
+        let mut k = 0;
+        while k != rng_down {
+            println!("j = {}", j);
+            println!("sdown = {}", sdo);
+            sdo.set(j as usize);
+            j = sdo.leading_zeros();
+            k += 1;
+        }
 
         let mut sup = self.spin_up;
-        let mut sdo = self.spin_up;
+        let mut sdo = self.spin_down;
         // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
-        sup.set(exchange.0);
-        sup.set(exchange.1);
-        sdo.set(exchange.0);
-        sdo.set(exchange.1);
+        sup.set(i as usize);
+        sup.set(j as usize);
+        sdo.set(i as usize);
+        sdo.set(j as usize);
 
-        out_idx.0 = exchange.0;
-        out_idx.1 = exchange.1;
+        out_idx.0 = i as usize;
+        out_idx.1 = j as usize;
 
         FockState {
             n_sites: self.n_sites,
