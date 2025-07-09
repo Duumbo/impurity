@@ -678,35 +678,55 @@ where T: BitOps + std::fmt::Display + Send,
     }
 
     fn generate_exchange<R: Rng + ?Sized>(self: &FockState<T>, rng: &mut R, out_idx: &mut (usize, usize)) -> FockState<T> {
-        let nup = self.spin_up.count_ones();
-        let ndo = self.spin_down.count_ones();
-        let rng_up = rng.gen::<u32>() % nup;
-        println!("idx up = {}", rng_up);
-        let rng_down = rng.gen::<u32>() % ndo;
-        println!("idx down = {}", rng_down);
+        let mut succeded = false;
+        let mut i = 0;
+        let mut j = 0;
+        let mut n_tries = 0;
+        while !succeded {
+            let nup = self.spin_up.count_ones();
+            let ndo = self.spin_down.count_ones();
+            let rng_up = rng.gen::<u32>() % nup;
+            let rng_down = rng.gen::<u32>() % ndo;
 
-        // Get up idx
-        let mut sup = self.spin_up;
-        let mut sdo = self.spin_down;
-        let mut i = sup.leading_zeros();
-        let mut k = 0;
-        while k != rng_up {
-            println!("i = {}", i);
-            println!("sup = {}", sup);
-            sup.set(i as usize);
+            // Get up idx
+            let mut sup = self.spin_up;
+            let mut sdo = self.spin_down;
             i = sup.leading_zeros();
-            k += 1;
-        }
-        let mut j = sdo.leading_zeros();
-        let mut k = 0;
-        while k != rng_down {
-            println!("j = {}", j);
-            println!("sdown = {}", sdo);
-            sdo.set(j as usize);
+            let mut k = 0;
+            while k != rng_up {
+                sup.set(i as usize);
+                i = sup.leading_zeros();
+                k += 1;
+            }
             j = sdo.leading_zeros();
-            k += 1;
+            let mut k = 0;
+            while k != rng_down {
+                sdo.set(j as usize);
+                j = sdo.leading_zeros();
+                k += 1;
+            }
+            if i != j {
+                succeded = true;
+            }
+            let mut sup = self.spin_up;
+            let mut sdo = self.spin_down;
+            // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
+            sup.set(i as usize);
+            sup.set(j as usize);
+            sdo.set(i as usize);
+            sdo.set(j as usize);
+            if sup.count_ones() != self.spin_up.count_ones() {
+                succeded = false;
+            }
+            if sdo.count_ones() != self.spin_down.count_ones() {
+                succeded = false;
+            }
+            n_tries += 1;
+            if n_tries > 1000 {
+                println!("Self = {}", self);
+                panic!("Too many tries to exchange failed");
+            }
         }
-
         let mut sup = self.spin_up;
         let mut sdo = self.spin_down;
         // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
@@ -714,6 +734,7 @@ where T: BitOps + std::fmt::Display + Send,
         sup.set(j as usize);
         sdo.set(i as usize);
         sdo.set(j as usize);
+
 
         out_idx.0 = i as usize;
         out_idx.1 = j as usize;

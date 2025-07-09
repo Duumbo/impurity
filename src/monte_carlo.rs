@@ -6,30 +6,34 @@ use rand::Rng;
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
 use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams};
-use crate::density::{compute_internal_product_parts, fast_internal_product};
+use crate::density::{compute_internal_product_parts, fast_internal_product, fast_internal_product_exchange};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
+const DEACTIVATE_EXCHANGE: bool = false;
 
-//fn propose_exchange
-//<R: Rng + ?Sized,
-//T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8>>
-//(
-//    state: &FockState<T>,
-//    pfaff_state: &PfaffianState,
-//    previous_proj: &mut f64,
-//    exchange: &mut (usize, usize),
-//    rng: &mut R,
-//    params: &VarParams,
-//    sys: &SysParams,
-//) -> (f64, FockState<T>, Vec<f64>, usize)
-//    where Standard: Distribution<T>
-//{
-//    let state2 = state.generate_exchange(rng, exchange);
-//    let (ratio_ip, updated_column, col_idx) = {
-//        fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params)
-//    };
-//    (ratio_ip, state2, updated_column, col_idx)
-//}
+#[inline(always)]
+fn propose_exchange
+<R: Rng + ?Sized,
+T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8> + Send + Sync>
+(
+    state: &FockState<T>,
+    pfaff_state: &PfaffianState,
+    exchange: &mut (usize, usize),
+    rng: &mut R,
+    params: &VarParams,
+) -> (f64, FockState<T>)
+    where Standard: Distribution<T>
+{
+    // Test if exchange is possible
+    if (state.spin_up ^ state.spin_down).leading_zeros() >= state.n_sites as u32 {
+        panic!("Impossible exchange asked for. Undefined behavior.");
+    }
+    let state2 = state.generate_exchange(rng, exchange);
+    let ip = {
+        fast_internal_product_exchange(pfaff_state, exchange, params)
+    };
+    (ip, state2)
+}
 
 #[inline(always)]
 fn propose_hopping
@@ -133,33 +137,97 @@ where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + Send,
     // Warmup
     for _ in 0..sys.nmcwarmup {
         let mut proj_copy = *proj;
-        let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, hop, rng, params, sys);
-        trace!("Current state: {}", state);
-        trace!("Proposed state: {}", state2);
-        trace!("Ratio: {}", ratio);
-        ratio *= <f64>::exp(proj_copy - *proj);
-        let w = rng.gen::<f64>();
-        if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
-            // We ACCEPT
-            trace!("Accept.");
-            *n_accepted_updates += 1;
-            make_update(
-                n_accepted_updates,
-                proj,
-                &mut proj_copy,
-                proj_copy_persistent,
-                &ratio,
-                ratio_prod,
-                state,
-                &state2,
-                &hop,
-                col,
-                colidx,
-                pstate,
-                params,
-                sys
-            );
+        let mut choose_up_type: usize = rng.gen::<usize>() % 20;
+        if (state.spin_up ^ state.spin_down).leading_zeros() >= state.n_sites as u32 {
+            choose_up_type = 1;
+        }
+        if (choose_up_type != 0) || DEACTIVATE_EXCHANGE {
+            let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, hop, rng, params, sys);
+            trace!("Current state: {}", state);
+            trace!("Proposed state: {}", state2);
+            trace!("Ratio: {}", ratio);
+            ratio *= <f64>::exp(proj_copy - *proj);
+            let w = rng.gen::<f64>();
+            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+                // We ACCEPT
+                trace!("Accept.");
+                *n_accepted_updates += 1;
+                make_update(
+                    n_accepted_updates,
+                    proj,
+                    &mut proj_copy,
+                    proj_copy_persistent,
+                    &ratio,
+                    ratio_prod,
+                    state,
+                    &state2,
+                    &hop,
+                    col,
+                    colidx,
+                    pstate,
+                    params,
+                    sys
+                );
 
+            }
+        } else {
+            let mut ex = (0, 0);
+            let (mut ratio, state2) = propose_exchange(&state, &pstate, &mut ex, rng, params);
+            //println!("Current state: {}", state);
+            //println!("Proposed state: {}", state2);
+            //println!("Ratio: {}", ratio);
+            ratio *= <f64>::exp(proj_copy - *proj);
+            let w = rng.gen::<f64>();
+            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+                // We ACCEPT
+                //println!("Accept.");
+                *n_accepted_updates += 1;
+                let hop = (ex.0, ex.1, Spin::Up);
+                let mut int_state = state.clone();
+                int_state.spin_up.set(ex.0);
+                int_state.spin_up.set(ex.1);
+                //println!("Hop = {:?}", hop);
+                //println!("up: {:?}, down: {:?}", pstate.indices.0, pstate.indices.1);
+                let (mut ratio, col, colidx) = fast_internal_product(state, &int_state, pstate, &hop, &mut proj_copy, params);
+                make_update(
+                    n_accepted_updates,
+                    proj,
+                    &mut proj_copy,
+                    proj_copy_persistent,
+                    &ratio,
+                    ratio_prod,
+                    state,
+                    &int_state,
+                    &hop,
+                    col,
+                    colidx,
+                    pstate,
+                    params,
+                    sys
+                );
+                let hop = (ex.1, ex.0, Spin::Down);
+                //println!("Hop = {:?}", hop);
+                //println!("up: {:?}, down: {:?}", pstate.indices.0, pstate.indices.1);
+                //println!("up: {:?}, down: {:?}", pstate.indices, pstate.indices2)
+                let (mut ratio, col, colidx) = fast_internal_product(&int_state, &state2, pstate, &hop, &mut proj_copy, params);
+                make_update(
+                    n_accepted_updates,
+                    proj,
+                    &mut proj_copy,
+                    proj_copy_persistent,
+                    &ratio,
+                    ratio_prod,
+                    state,
+                    &state2,
+                    &hop,
+                    col,
+                    colidx,
+                    pstate,
+                    params,
+                    sys
+                );
+
+            }
         }
     }
 
@@ -377,54 +445,132 @@ where Standard: Distribution<T>
         energy_quad_sums, &mut n_values, 0, error_estimation_level);
     for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
-        trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
-        let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
-        trace!("After proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
-        trace!("Current state: {}", state);
-        trace!("Proposed state: {}", state2);
-        trace!("Ratio: {}", ratio);
-        ratio *= <f64>::exp(proj_copy - proj);
-        let w = rng.gen::<f64>();
-        if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
-            // We ACCEPT
-            trace!("Accept.");
-            n_accepted_updates += 1;
-            make_update(
-                &mut n_accepted_updates,
-                &mut proj,
-                &mut proj_copy,
-                &mut proj_copy_persistent,
-                &ratio,
-                &mut ratio_prod,
-                &mut state,
-                &state2,
-                &hop,
-                col,
-                colidx,
-                &mut pstate,
-                params,
-                sys
-            );
-            // Compute the derivative operator
+        let mut choose_up_type = rng.gen::<usize>() % 20;
+        if (state.spin_up ^ state.spin_down).leading_zeros() >= state.n_sites as u32 {
+            choose_up_type = 1;
+        }
+        if (choose_up_type != 0) || DEACTIVATE_EXCHANGE {
+            trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
+            let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
+            trace!("After proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
+            trace!("Current state: {}", state);
+            trace!("Proposed state: {}", state2);
+            trace!("Ratio: {}", ratio);
+            ratio *= <f64>::exp(proj_copy - proj);
+            let w = rng.gen::<f64>();
+            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+                // We ACCEPT
+                trace!("Accept.");
+                n_accepted_updates += 1;
+                make_update(
+                    &mut n_accepted_updates,
+                    &mut proj,
+                    &mut proj_copy,
+                    &mut proj_copy_persistent,
+                    &ratio,
+                    &mut ratio_prod,
+                    &mut state,
+                    &state2,
+                    &hop,
+                    col,
+                    colidx,
+                    &mut pstate,
+                    params,
+                    sys
+                );
+                // Compute the derivative operator
+                if sample_counter >= sys.mcsample_interval {
+                    derivatives.mu += 1;
+                    compute_derivative_operator(state, &pstate, derivatives, sys);
+                }
+            }
             if sample_counter >= sys.mcsample_interval {
-                derivatives.mu += 1;
-                compute_derivative_operator(state, &pstate, derivatives, sys);
-            }
-        }
-        if sample_counter >= sys.mcsample_interval {
-            accumulated_states.push(state);
-            derivatives.visited[derivatives.mu as usize] += 1;
-            let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
+                accumulated_states.push(state);
+                derivatives.visited[derivatives.mu as usize] += 1;
+                let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
 
-            accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
-            energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
-                energy_quad_sums, &mut n_values, mc_it, error_estimation_level);
-            sample_counter = 0;
-            if mc_it >= (sys.nmcsample - sys.nbootstrap) * sys.mcsample_interval {
-                energy_bootstraped += energy;
+                accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
+                energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
+                    energy_quad_sums, &mut n_values, mc_it, error_estimation_level);
+                sample_counter = 0;
+                if mc_it >= (sys.nmcsample - sys.nbootstrap) * sys.mcsample_interval {
+                    energy_bootstraped += energy;
+                }
             }
+            sample_counter += 1;
+        } else {
+            let mut ex = (0, 0);
+            let (mut ratio, state2) = propose_exchange(&state, &pstate, &mut ex, rng, params);
+            trace!("Current state: {}", state);
+            trace!("Proposed state: {}", state2);
+            trace!("Ratio: {}", ratio);
+            ratio *= <f64>::exp(proj_copy - proj);
+            let w = rng.gen::<f64>();
+            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+                // We ACCEPT
+                trace!("Accept.");
+                n_accepted_updates += 1;
+                let hop = (ex.0, ex.1, Spin::Up);
+                let mut int_state = state.clone();
+                int_state.spin_up.set(ex.0);
+                int_state.spin_up.set(ex.1);
+                let (ratio, col, colidx) = fast_internal_product(&state, &int_state, &pstate, &hop, &mut proj_copy, params);
+                make_update(
+                    &mut n_accepted_updates,
+                    &mut proj,
+                    &mut proj_copy,
+                    &mut proj_copy_persistent,
+                    &ratio,
+                    &mut ratio_prod,
+                    &mut state,
+                    &int_state,
+                    &hop,
+                    col,
+                    colidx,
+                    &mut pstate,
+                    params,
+                    sys
+                );
+                let hop = (ex.1, ex.0, Spin::Down);
+                let (ratio, col, colidx) = fast_internal_product(&int_state, &state2, &pstate, &hop, &mut proj_copy, params);
+                make_update(
+                    &mut n_accepted_updates,
+                    &mut proj,
+                    &mut proj_copy,
+                    &mut proj_copy_persistent,
+                    &ratio,
+                    &mut ratio_prod,
+                    &mut state,
+                    &state2,
+                    &hop,
+                    col,
+                    colidx,
+                    &mut pstate,
+                    params,
+                    sys
+                );
+
+                // Compute the derivative operator
+                if sample_counter >= sys.mcsample_interval {
+                    derivatives.mu += 1;
+                    compute_derivative_operator(state, &pstate, derivatives, sys);
+                }
+            }
+            if sample_counter >= sys.mcsample_interval {
+                accumulated_states.push(state);
+                derivatives.visited[derivatives.mu as usize] += 1;
+                let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
+
+                accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
+                energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
+                    energy_quad_sums, &mut n_values, mc_it, error_estimation_level);
+                sample_counter = 0;
+                if mc_it >= (sys.nmcsample - sys.nbootstrap) * sys.mcsample_interval {
+                    energy_bootstraped += energy;
+                }
+            }
+            sample_counter += 1;
         }
-        sample_counter += 1;
 
     }
     derivatives.mu += 1;

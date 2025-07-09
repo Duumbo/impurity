@@ -4,7 +4,7 @@ use pyo3::{pyfunction, PyResult};
 
 use crate::jastrow::{compute_jastrow_exp, fast_update_jastrow};
 use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller, fast_update_gutzwiller_spin_change};
-use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, PfaffianState};
+use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, get_pfaffian_ratio_exchange, PfaffianState};
 use crate::{BitOps, FockState, Spin, SpinState, VarParams, SysParams};
 
 pub fn compute_internal_product<T>(
@@ -116,6 +116,26 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     trace!("Fast Projector value: {}, for state: {}", previous_proj, new_state);
     trace!("Fast Computed <x'|pf>/<x|pf>: {}, |x'> = {}, |x> = {}", pfaffian_ratio, new_state, previous_state);
     (pfaffian_ratio, b_vec, col)
+}
+
+pub fn fast_internal_product_exchange(
+    previous_pstate: &PfaffianState,
+    exchange: &(usize, usize),
+    params: &VarParams,
+) -> f64
+{
+    // Rename things.
+    let previous_i = exchange.0;
+    let new_i = exchange.1;
+    let pspin = Spin::Up;
+    let nspin = Spin::Down;
+
+    let ip = {
+        let fij = &params.fij;
+        get_pfaffian_ratio_exchange(previous_pstate, previous_i, new_i, pspin, nspin, fij)
+    };
+
+    ip.0
 }
 
 pub fn fast_internal_product<T>(

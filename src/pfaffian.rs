@@ -19,7 +19,8 @@ pub struct PfaffianState {
     pub n_elec: usize,
     pub n_sites: usize,
     pub pfaff: f64,
-    indices: (Vec<usize>, Vec<usize>),
+    // Duumbo
+    pub indices: (Vec<usize>, Vec<usize>),
     pub inv_matrix: Vec<f64>,
 }
 
@@ -200,13 +201,13 @@ where
 
     // Invert matrix.
     let pfaffian_value = compute_pfaffian_wq(&mut a.clone(), n as i32);
-    println!("X = {}", PfaffianState {
-        n_elec: n,
-        n_sites: state.n_sites,
-        inv_matrix: a.clone(),
-        indices: (indices.clone(), indices2.clone()),
-        pfaff: pfaffian_value,
-    });
+    //println!("X = {}", PfaffianState {
+    //    n_elec: n,
+    //    n_sites: state.n_sites,
+    //    inv_matrix: a.clone(),
+    //    indices: (indices.clone(), indices2.clone()),
+    //    pfaff: pfaffian_value,
+    //});
     invert_matrix(&mut a, n as i32);
 
     trace!("Computed log abs pfaffian {} for state {}", <f64>::ln(<f64>::abs(pfaffian_value)), state);
@@ -285,9 +286,9 @@ pub fn get_pfaffian_ratio_exchange(
 ) -> (f64, Vec<f64>, Vec<f64>, usize, usize) {
     // Rename
     let indx_up = &previous_pstate.indices.0;
-    println!("Up : {:?}", indx_up);
+    //println!("Up : {:?}", indx_up);
     let indx_down = &previous_pstate.indices.1;
-    println!("Down : {:?}", indx_down);
+    //println!("Down : {:?}", indx_down);
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
 
@@ -368,7 +369,7 @@ pub fn get_pfaffian_ratio_exchange(
                     new_b2.push(0.0);
                     continue;
                 }
-                println!("Pushed X_[{}, {}], sector up up", previous_i, iup);
+                //println!("Pushed X_[{}, {}], sector up up", previous_i, iup);
                 new_b2.push(
                     fij[previous_i + n_sites * iup]
                     -fij[iup + n_sites * previous_i]);
@@ -378,10 +379,10 @@ pub fn get_pfaffian_ratio_exchange(
                     new_b2.push(
                         fij[previous_i + n_sites * new_i + n_sites*n_sites]
                         -fij[new_i + n_sites * previous_i + 2*n_sites*n_sites]);
-                    println!("Pushed 0.0");
+                    //println!("Pushed 0.0");
                     continue;
                 }
-                println!("Pushed X_[{}, {}], sector up down", previous_i, iup);
+                //println!("Pushed X_[{}, {}], sector up down", previous_i, iup);
                 new_b2.push(
                     fij[previous_i + n_sites * iup + n_sites*n_sites]
                     -fij[iup + n_sites * previous_i + 2*n_sites*n_sites]);
@@ -391,7 +392,7 @@ pub fn get_pfaffian_ratio_exchange(
     for idown in indx_down.iter() {
         match new_spin {
             Spin::Up => {
-                println!("Pushed X_[{}, {}], sector down up", previous_i, idown);
+                //println!("Pushed X_[{}, {}], sector down up", previous_i, idown);
                 new_b2.push(
                     fij[previous_i + n_sites * idown + 2*n_sites*n_sites]
                     -fij[idown + n_sites * previous_i + n_sites*n_sites]);
@@ -399,15 +400,15 @@ pub fn get_pfaffian_ratio_exchange(
             Spin::Down => {
                 if *idown == previous_i {
                     new_b2.push(0.0);
-                    println!("Pushed 0.0");
+                    //println!("Pushed 0.0");
                     continue;
                 }
                 if *idown == new_i {
                     new_b2.push(0.0);
-                    println!("Pushed 0.0");
+                    //println!("Pushed 0.0");
                     continue;
                 }
-                println!("Pushed X_[{}, {}], sector down up", previous_i, idown);
+                //println!("Pushed X_[{}, {}], sector down up", previous_i, idown);
                 new_b2.push(
                     fij[previous_i + n_sites * idown + 3*n_sites*n_sites]
                     -fij[idown + n_sites * previous_i + 3*n_sites*n_sites]);
@@ -429,15 +430,15 @@ pub fn get_pfaffian_ratio_exchange(
 
     // Compute the updated pfaffian.
     trace!("Need to update col {}", col1);
-    println!("X^[-1] = {}", previous_pstate);
-    println!("X^[-1]_1 = {:?}", 
-            &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
-);
-    println!("X^[-1]_2 = {:?}", 
-            &previous_pstate.inv_matrix[n_elec * col2..n_elec + n_elec * col2],
-);
-    println!("b1 = {:?}", new_b1);
-    println!("b2 = {:?}", new_b2);
+    //println!("X^[-1] = {}", previous_pstate);
+    //println!("X^[-1]_1 = {:?}", 
+    //        &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
+//);
+    //println!("X^[-1]_2 = {:?}", 
+    //        &previous_pstate.inv_matrix[n_elec * col2..n_elec + n_elec * col2],
+//);
+    //println!("b1 = {:?}", new_b1);
+    //println!("b2 = {:?}", new_b2);
     trace!("X^[-1]_[col, i] = {:?}",
             &previous_pstate.inv_matrix[n_elec * col1..n_elec + n_elec * col1],
 );
@@ -474,8 +475,8 @@ pub fn get_pfaffian_ratio_exchange(
     }
     // Determinant of update
     let det = c_matrix[0] * c_matrix[3] - c_matrix[1] * c_matrix[2];
-    println!("C = {:?}", c_matrix);
-    println!("det = {}", det);
+    //println!("C = {:?}", c_matrix);
+    //println!("det = {}", det);
     // Correction
     let mut y = vec![0.0; n_elec];
     let correction = unsafe {
@@ -488,11 +489,11 @@ pub fn get_pfaffian_ratio_exchange(
         dgemv(trans, m, m, alpha, &previous_pstate.inv_matrix, m, &new_b1, incx, beta, &mut y, incy);
         ddot(m, &new_b2, incx, &y, incy)
     };
-    println!("Corr = {}", correction);
-    println!("new_b2_1 = {}", new_b2[col1]);
-    println!("X^-1 _ 1,2 = {}", previous_pstate.inv_matrix[col2 + n_elec * col1]);
-    let pfaff_up = det + previous_pstate.inv_matrix[col1 + n_elec * col2]* (new_b2[col1] + correction);
-    println!("pfaffu_up = {}", pfaff_up);
+    //println!("Corr = {}", correction);
+    //println!("new_b2_1 = {}", new_b2[col1]);
+    //println!("X^-1 _ 1,2 = {}", previous_pstate.inv_matrix[col2 + n_elec * col1]);
+    let pfaff_up = det + previous_pstate.inv_matrix[col1 + n_elec * col2] * (new_b2[col1] + correction);
+    //println!("pfaffu_up = {}", pfaff_up);
     (pfaff_up, new_b1, new_b2, col1, col2)
 }
 
@@ -517,9 +518,7 @@ pub fn get_pfaffian_ratio(
 ) -> (f64, Vec<f64>, usize) {
     // Rename
     let indx_up = &previous_pstate.indices.0;
-    trace!("Up : {:?}", indx_up);
     let indx_down = &previous_pstate.indices.1;
-    trace!("Down : {:?}", indx_down);
     let n_sites = previous_pstate.n_sites;
     let n_elec = previous_pstate.n_elec;
 
@@ -571,8 +570,8 @@ pub fn get_pfaffian_ratio(
     }
 
     // Get the column to replace.
-    trace!("Making hopping ({}, {}, {}, {})", previous_i, new_i, previous_spin, new_spin);
-    trace!("Index: up {:?}, down {:?}", indx_up, indx_down);
+    //println!("Making hopping ({}, {}, {}, {})", previous_i, new_i, previous_spin, new_spin);
+    //println!("Index: up {:?}, down {:?}", indx_up, indx_down);
     let col = match previous_spin {
         Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
         Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
@@ -606,6 +605,13 @@ fn replace_element(vec: &mut Vec<usize>, i: usize, j: usize) {
     }
 }
 
+pub fn update_exchange_pstate(pstate: &mut PfaffianState, ex: (usize, usize, Spin, Spin), fij: &[f64]) {
+    let (_, b, col) = get_pfaffian_ratio(pstate, ex.0, ex.1, ex.2, ex.2, fij);
+    update_pstate(pstate, (ex.0, ex.1, ex.2), b, col);
+    let (_, b, col) = get_pfaffian_ratio(pstate, ex.1, ex.0, ex.3, ex.3, fij);
+    update_pstate(pstate, (ex.1, ex.0, ex.3), b, col);
+}
+
 /// Updates the pfaffian state given a computed ratio from the vector b.
 /// # Fields
 /// * __`pstate`__ - The pfaffian state to update. It will update inplace the
@@ -619,9 +625,11 @@ pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: 
     trace!("Updating the inverse matrix.");
     match hop.2 {
         Spin::Up => {
+            //println!("Replacing {} -> {}", hop.0, hop.1);
             replace_element(&mut pstate.indices.0, hop.0, hop.1);
         },
         Spin::Down => {
+            //println!("Replacing {} -> {}", hop.0, hop.1);
             replace_element(&mut pstate.indices.1, hop.0, hop.1);
         }
     };
@@ -1305,42 +1313,42 @@ mod tests {
             close(*good, test, 1e-12);
         }
     }
-    const SIZE: usize = 4;
-    const SIZE_M: usize = 2;
-    const SIZE_N: usize = 2;
-    const HOPPINGS: [f64; SIZE*SIZE] = {
-        // Constructs hopping matrix for SITES_N*SITES_M
-        let mut tmp = [0.0; SIZE*SIZE];
-        let mut i = 0;
-        let mut j = 0;
-        while i < SIZE_M {
-            while j < SIZE_N {
-                let next_inline = (i + 1) % SIZE_M;
-                let prev_inline = (i + SIZE_M - 1) % SIZE_M;
-                let next_column = (j + 1) % SIZE_N;
-                let prev_column = (j +SIZE_N - 1) % SIZE_N;
-                tmp[ next_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
-                tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
-                tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] = 1.0;
-                tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] = 1.0;
-                j += 1;
-            }
-            i += 1;
-            j = 0;
-        }
-        i = 0;
-        // RESET DIAGONAL (edge case for if SIZE_M==1 or SIZE_N==1)
-        while i < SIZE {
-            tmp[ i + i*SIZE] = 0.0;
-            i += 1;
-        }
-        tmp
-    };
 
     use crate::{RandomStateGeneration, SysParams, VarParams, generate_bitmask};
     #[test]
-    fn test_pfaffian_exchange() {
+    fn test_pfaffian_exchange4x4() {
         const N_TEST_ITER: usize = 100;
+        const SIZE: usize = 4;
+        const SIZE_M: usize = 2;
+        const SIZE_N: usize = 2;
+        const HOPPINGS: [f64; SIZE*SIZE] = {
+            // Constructs hopping matrix for SITES_N*SITES_M
+            let mut tmp = [0.0; SIZE*SIZE];
+            let mut i = 0;
+            let mut j = 0;
+            while i < SIZE_M {
+                while j < SIZE_N {
+                    let next_inline = (i + 1) % SIZE_M;
+                    let prev_inline = (i + SIZE_M - 1) % SIZE_M;
+                    let next_column = (j + 1) % SIZE_N;
+                    let prev_column = (j +SIZE_N - 1) % SIZE_N;
+                    tmp[ next_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
+                    tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
+                    tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] = 1.0;
+                    tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] = 1.0;
+                    j += 1;
+                }
+                i += 1;
+                j = 0;
+            }
+            i = 0;
+            // RESET DIAGONAL (edge case for if SIZE_M==1 or SIZE_N==1)
+            while i < SIZE {
+                tmp[ i + i*SIZE] = 0.0;
+                i += 1;
+            }
+            tmp
+        };
         let mut rng = SmallRng::seed_from_u64(42);
         let state = FockState {
             spin_up: 0b_10100000u8,
@@ -1354,10 +1362,10 @@ mod tests {
         for i in 0..4*4*4 {
             fij[i] = rng.gen();
         }
-        for i in 0..4 {
+        for _ in 0..4 {
             gi.push(rng.gen());
         }
-        for i in 0..4*4 {
+        for _ in 0..4*4 {
             vij.push(rng.gen());
         }
         let params = VarParams {
@@ -1389,15 +1397,14 @@ mod tests {
             pair_wavefunction: false,
             _opt_iter: 0,
         };
-        let (pstate, proj) = compute_internal_product_parts(state, &params, &sys);
+        let (pstate, _proj) = compute_internal_product_parts(state, &params, &sys);
         println!("{}", state);
 
-        for i in 0..N_TEST_ITER {
-            println!("Brother");
+        for _ in 0..N_TEST_ITER {
             let state2 = state.generate_exchange(&mut rng, &mut ex);
             println!("{}", state2);
             let ip = get_pfaffian_ratio_exchange(&pstate, ex.0, ex.1, Spin::Up, Spin::Down, params.fij);
-            let (pstate2, proj2) = compute_internal_product_parts(state2, &params, &sys);
+            let (pstate2, _proj2) = compute_internal_product_parts(state2, &params, &sys);
             let pfaffian_from_fast_update = pstate.pfaff * ip.0;
             println!("Comparing full computation to fast update");
             println!("{} == {}", pstate2.pfaff, pfaffian_from_fast_update);
@@ -1407,4 +1414,102 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_pfaffian_exchange8x8() {
+        const N_TEST_ITER: usize = 100;
+        const SIZE: usize = 8;
+        const SIZE_M: usize = 2;
+        const SIZE_N: usize = 4;
+        const HOPPINGS: [f64; SIZE*SIZE] = {
+            // Constructs hopping matrix for SITES_N*SITES_M
+            let mut tmp = [0.0; SIZE*SIZE];
+            let mut i = 0;
+            let mut j = 0;
+            while i < SIZE_M {
+                while j < SIZE_N {
+                    let next_inline = (i + 1) % SIZE_M;
+                    let prev_inline = (i + SIZE_M - 1) % SIZE_M;
+                    let next_column = (j + 1) % SIZE_N;
+                    let prev_column = (j +SIZE_N - 1) % SIZE_N;
+                    tmp[ next_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
+                    tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] = 1.0;
+                    tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] = 1.0;
+                    tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] = 1.0;
+                    j += 1;
+                }
+                i += 1;
+                j = 0;
+            }
+            i = 0;
+            // RESET DIAGONAL (edge case for if SIZE_M==1 or SIZE_N==1)
+            while i < SIZE {
+                tmp[ i + i*SIZE] = 0.0;
+                i += 1;
+            }
+            tmp
+        };
+        let mut rng = SmallRng::seed_from_u64(42);
+        let state = FockState {
+            spin_up: 0b_10101010u8,
+            spin_down: 0b_01010101u8,
+            n_sites: SIZE,
+        };
+        let mut fij: Vec<f64> = vec![0.0; 4*SIZE*SIZE];
+        let mut gi: Vec<f64> = vec![];
+        let mut vij: Vec<f64> = vec![];
+        let mut ex = (0, 0);
+        for i in 0..4*SIZE*SIZE {
+            fij[i] = rng.gen();
+        }
+        for _ in 0..SIZE {
+            gi.push(rng.gen());
+        }
+        for _ in 0..(SIZE*SIZE - SIZE)/2 {
+            vij.push(rng.gen());
+        }
+        let params = VarParams {
+            fij: &mut fij,
+            vij: &mut vij,
+            gi: &mut gi,
+            size: SIZE,
+        };
+        let bitmask = generate_bitmask(&HOPPINGS, SIZE);
+        let sys = SysParams {
+            size: SIZE,
+            nelec: SIZE,
+            array_size: (4 + 7) / 8,
+            cons_t: -1.0,
+            cons_u: 1.0,
+            nfij: 4*SIZE*SIZE,
+            nvij: (SIZE*SIZE - SIZE)/2,
+            ngi: SIZE,
+            transfert_matrix: &HOPPINGS,
+            hopping_bitmask: &bitmask,
+            clean_update_frequency: 0,
+            nmcsample: 0,
+            nbootstrap: 0,
+            nmcwarmup: 0,
+            nwarmupchains: 0,
+            mcsample_interval: 0,
+            tolerance_sherman_morrison: 0.0,
+            tolerance_singularity: 0.0,
+            pair_wavefunction: false,
+            _opt_iter: 0,
+        };
+        let (pstate, _proj) = compute_internal_product_parts(state, &params, &sys);
+        println!("{}", state);
+
+        for _ in 0..N_TEST_ITER {
+            let state2 = state.generate_exchange(&mut rng, &mut ex);
+            println!("{}", state2);
+            let ip = get_pfaffian_ratio_exchange(&pstate, ex.0, ex.1, Spin::Up, Spin::Down, params.fij);
+            let (pstate2, _proj2) = compute_internal_product_parts(state2, &params, &sys);
+            let pfaffian_from_fast_update = pstate.pfaff * ip.0;
+            println!("Comparing full computation to fast update");
+            println!("{} == {}", pstate2.pfaff, pfaffian_from_fast_update);
+            println!("pratio = {}", pstate2.pfaff / pstate.pfaff);
+            println!("pratio^-1 = {}", pstate.pfaff / pstate2.pfaff);
+            close(pstate2.pfaff, pfaffian_from_fast_update, 1e-12);
+        }
+    }
 }

@@ -9,6 +9,10 @@ use crate::{BitOps, DerivativeOperator, FockState, SysParams, VarParams};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
 use crate::optimisation::{conjugate_gradiant, exact_overlap_inverse, GenParameterMap, ReducibleGeneralRepresentation};
 
+pub const ADAMS_BASHFORTH_COEFS: [f64; 15] = [
+    1.0, 3.0/2.0, -1.0/2.0, 23.0/12.0, -16.0/12.0, 5.0/12.0, 55.0/24.0, -59.0/24.0, 37.0/24.0, -9.0/24.0, 1901.0/720.0, -2774.0/720.0, 2616.0/720.0, -1274.0/720.0, 251.0/720.0
+];
+
 #[derive(Debug)]
 pub enum EnergyOptimisationMethod {
     ExactInverse,
@@ -40,6 +44,7 @@ pub struct VMCParams {
     pub optimise_orbital: bool,
     pub conv_param_threshold: f64,
     pub filter_before_shift: bool,
+    pub adams_bashforth_order: usize,
 }
 
 fn merge_derivatives(der: &mut DerivativeOperator, der_vec: &mut [DerivativeOperator], param_map: &GenParameterMap, nmc: usize, nthreads: usize, x0: &mut [f64]){
@@ -208,6 +213,8 @@ pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
 where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distribution<T> + std::marker::Send
 {
     let mut output_energy_array = vec![0.0; vmcparams.noptiter * 3];
+    let mut parameter_steps = vec![0.0; (sys.ngi + sys.nvij + sys.nfij) * vmcparams.adams_bashforth_order];
+    let mut adams_order = 1;
 
     let mut x0 = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
     let mut b = vec![0.0; sys.ngi + sys.nvij + sys.nfij].into_boxed_slice();
@@ -348,21 +355,72 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
 
         param_map.update_delta_alpha_reduced_to_gen(&mut delta_alpha);
         if vmcparams.optimise {
-            unsafe {
-                let incx = 1;
-                let incy = 1;
-                let alpha = - vmcparams.dt * <f64>::exp(- (opt_iter as f64) * vmcparams.optimisation_decay);
-                //let alpha = 1.0;
-                if vmcparams.optimise_gutzwiller {
-                    daxpy(sys.ngi as i32, alpha, &delta_alpha, incx, &mut params.gi, incy);
+            if vmcparams.adams_bashforth_order == 1 {
+                unsafe {
+                    let incx = 1;
+                    let incy = 1;
+                    let alpha = - vmcparams.dt * <f64>::exp(- (opt_iter as f64) * vmcparams.optimisation_decay);
+                    //let alpha = 1.0;
+                    if vmcparams.optimise_gutzwiller {
+                        daxpy(sys.ngi as i32, alpha, &delta_alpha, incx, &mut params.gi, incy);
+                    }
+                    if vmcparams.optimise_jastrow {
+                        daxpy(sys.nvij as i32, alpha, &delta_alpha[sys.ngi..vmcparams.nparams], incx,
+                            &mut params.vij, incy);
+                    }
+                    if vmcparams.optimise_orbital {
+                        daxpy(sys.nfij as i32, alpha, &delta_alpha[sys.ngi +
+                            sys.nvij..vmcparams.nparams], incx, &mut params.fij, incy);
+                    }
                 }
-                if vmcparams.optimise_jastrow {
-                    daxpy(sys.nvij as i32, alpha, &delta_alpha[sys.ngi..vmcparams.nparams], incx,
-                        &mut params.vij, incy);
+            } else {
+                let n_full_params = sys.ngi + sys.nvij + sys.nfij;
+                unsafe {
+                    dcopy(n_full_params as i32, &delta_alpha, 1, &mut
+                        parameter_steps[0..n_full_params],
+                        1);
                 }
-                if vmcparams.optimise_orbital {
-                    daxpy(sys.nfij as i32, alpha, &delta_alpha[sys.ngi +
-                        sys.nvij..vmcparams.nparams], incx, &mut params.fij, incy);
+                // Adams-Bashforth 2order
+                for adams_i in 0..adams_order {
+                    unsafe {
+                        let coef_off = adams_order * (adams_order - 1) / 2;
+                        let incx = 1;
+                        let incy = 1;
+                        let alpha = - ADAMS_BASHFORTH_COEFS[adams_i + coef_off] * vmcparams.dt * <f64>::exp(- (opt_iter as f64) * vmcparams.optimisation_decay);
+                        //let alpha = 1.0;
+                        if vmcparams.optimise_gutzwiller {
+                            daxpy(sys.ngi as i32, alpha,
+                                &parameter_steps[adams_i*n_full_params..adams_i*n_full_params+sys.ngi],
+                                incx, &mut params.gi, incy);
+                        }
+                        if vmcparams.optimise_jastrow {
+                            daxpy(sys.nvij as i32, alpha,
+                                &parameter_steps[adams_i*n_full_params+sys.ngi..adams_i*n_full_params+sys.ngi+sys.nvij],
+                                incx,
+                                &mut params.vij, incy);
+                        }
+                        if vmcparams.optimise_orbital {
+                            daxpy(sys.nfij as i32, alpha,
+                                &parameter_steps[adams_i*n_full_params+sys.ngi+sys.nvij..adams_i*n_full_params+sys.ngi+sys.nvij+sys.nfij],
+                                incx, &mut params.fij, incy);
+                        }
+                    }
+                }
+                // Copy last params one space back
+                for adams_i in 1..vmcparams.adams_bashforth_order {
+                    let begin_line_old = n_full_params*(vmcparams.adams_bashforth_order - adams_i - 1);
+                    let end_line_old = n_full_params*(vmcparams.adams_bashforth_order - adams_i);
+                    let begin_line_new = n_full_params*(vmcparams.adams_bashforth_order - adams_i);
+                    let end_line_new = n_full_params*(vmcparams.adams_bashforth_order - adams_i + 1);
+                    unsafe {
+                        let param_ptr =
+                            &parameter_steps[begin_line_old..end_line_old] as *const [f64];
+                        dcopy(vmcparams.nparams as i32, &*param_ptr, 1, &mut
+                            parameter_steps[begin_line_new..end_line_new], 1);
+                    }
+                }
+                if adams_order < vmcparams.adams_bashforth_order {
+                    adams_order += 1;
                 }
             }
             info!("Correctly finished optimisation iteration {}", opt_iter);
