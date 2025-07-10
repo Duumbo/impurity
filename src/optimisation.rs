@@ -884,27 +884,22 @@ pub fn conjugate_gradiant(a: &DerivativeOperator, b: &mut [f64], x0: &mut [f64],
     let mut w = vec![0.0; new_dim].into_boxed_slice();
     // Error threshold
     let mut e = 0.0;
+    let mut j = 0;
     for i in 0..dim as usize {
         if ignore[i] {
             continue;
         }
         e += b[i] * b[i];
+        b[j] = b[i];
+        j += 1;
     }
     e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
     //println!("Error threshold e = {}", e);
     gradient(x0, &otilde, &a.visited, &expvalo, b, &diag_epsilon, new_dim as i32, a.mu, a.nsamp);
     let mut p = vec![0.0; new_dim].into_boxed_slice();
-    let mut j: usize = 0;
-    for i in 0..dim as usize {
-        if ignore[i] {
-            continue;
-        }
-        p[j] = b[i];
-        j += 1;
-    }
     unsafe {
-        dcopy(new_dim as i32, &p, 1, b, 1);
+        dcopy(new_dim as i32, b, 1, &mut p, 1);
     }
     let mut alpha = 0.0;
 
