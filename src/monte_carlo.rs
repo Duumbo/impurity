@@ -9,7 +9,7 @@ use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, 
 use crate::density::{compute_internal_product_parts, fast_internal_product, fast_internal_product_exchange};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
-const DEACTIVATE_EXCHANGE: bool = false;
+const DEACTIVATE_EXCHANGE: bool = true;
 
 #[inline(always)]
 fn propose_exchange

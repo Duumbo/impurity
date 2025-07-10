@@ -472,7 +472,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 panic!("Undefined behavior.");
             }
             info!("Max was: {}", max);
-            dscal(sys.nfij as i32, 1.0 / max, &mut params.fij, incx);
+            dscal(sys.nfij as i32, 4.0 / max, &mut params.fij, incx);
         }
         //unsafe {
         //    dcopy(

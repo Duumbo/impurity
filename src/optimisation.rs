@@ -522,8 +522,8 @@ fn prefilter_overlap_matrix(a: &DerivativeOperator, _ignore_idx: &mut [bool], di
                 let elem = a.o_tilde[k + j*(dim as usize)];
                 tmp += elem * elem * a.visited[j] as f64;
             }
-            tmp
-            //tmp / a.mu as f64
+            //tmp
+            tmp / a.mu as f64
         };
 
         // Now \Re{\expval{O_k}}^2
