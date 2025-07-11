@@ -2,7 +2,7 @@ use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use crate::{BitOps, DerivativeOperator, FockState};
+use crate::{optimisation::ParameterMap, BitOps, DerivativeOperator, FockState};
 
 /// Computes the Jastrow exponent for a single fock state.
 /// # Arguments
@@ -71,6 +71,7 @@ pub fn compute_jastrow_der<T>(
     fock_state: FockState<T>,
     der: &mut DerivativeOperator,
     n_sites: usize,
+    pmap: &ParameterMap,
 )
 where
     T: BitOps + std::fmt::Display + Send,
@@ -88,18 +89,26 @@ where
             if n1.check(i) ^ n2.check(k) {
                 if k > i {
                     //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -0.5;
-                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -1.0;
+                    *pmap.index_vij_mut(&mut der.o_tilde, i, k, der.mu as usize) = -1.0;
+                    // Dumbo
+                    //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = -1.0;
                 } else {
                     //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -0.5;
-                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -1.0;
+                    *pmap.index_vij_mut(&mut der.o_tilde, k, i, der.mu as usize) = -1.0;
+                    // Dumbo
+                    //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = -1.0;
                 }
             } else {
                 if k > i {
                     //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 0.5;
-                    der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 1.0;
+                    *pmap.index_vij_mut(&mut der.o_tilde, i, k, der.mu as usize) = 1.0;
+                    // Dumbo
+                    //der.o_tilde[der.jas_off + k*(k-1)/2 + i + (der.n * der.mu) as usize] = 1.0;
                 } else {
                     //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 0.5;
-                    der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 1.0;
+                    *pmap.index_vij_mut(&mut der.o_tilde, k, i, der.mu as usize) = 1.0;
+                    // Dumbo
+                    //der.o_tilde[der.jas_off + i*(i-1)/2 + k + (der.n * der.mu) as usize] = 1.0;
                 }
             }
         }

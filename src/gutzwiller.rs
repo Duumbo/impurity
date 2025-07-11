@@ -3,7 +3,7 @@ use log::trace;
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use crate::{BitOps, DerivativeOperator, FockState, Spin};
+use crate::{optimisation::ParameterMap, BitOps, DerivativeOperator, FockState, Spin};
 
 /// Computes the gutzwiller factor for a single fock state.
 /// # Arguments
@@ -54,6 +54,7 @@ pub fn compute_gutzwiller_der<T>(
     fock_state: FockState<T>,
     n_sites: usize,
     der: &mut DerivativeOperator,
+    pmap: &ParameterMap,
 )
 where
     T: BitOps + From<u8> + std::ops::Shl<usize, Output = T> + Debug + std::fmt::Display + Send,
@@ -64,7 +65,8 @@ where
     let mut i = gutzwiller_sites.leading_zeros() as usize;
     trace!("hello, i = {}", i);
     while i < n_sites {
-        der.o_tilde[i + (der.n * der.mu) as usize] = 1.0;
+        *pmap.index_gi_mut(&mut der.o_tilde, i, der.mu as usize) = 1.0;
+        //der.o_tilde[i + (der.n * der.mu) as usize] = 1.0;
         trace!("Computed gutzwiller derivative O_[{}, {}] = {}", i, der.mu, 1);
         gutzwiller_sites.set(i);
         i = gutzwiller_sites.leading_zeros() as usize;

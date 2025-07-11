@@ -58,8 +58,6 @@ pub struct DerivativeOperator {
     pub mu: i32,
     pub nsamp: f64,
     pub nsamp_int: usize,
-    pub pfaff_off: usize,
-    pub jas_off: usize,
     pub epsilon: f64,
     pub o_tilde: Box<[f64]>,
     pub expval_o: Box<[f64]>,
@@ -68,7 +66,7 @@ pub struct DerivativeOperator {
 }
 
 impl DerivativeOperator {
-    fn new(n: i32, mu: i32, nsamp: f64, nsamp_int: usize, pfaff_off: usize, jas_off: usize, epsilon: f64) -> Self {
+    fn new(n: i32, mu: i32, nsamp: f64, nsamp_int: usize, epsilon: f64) -> Self {
         DerivativeOperator {
             o_tilde: vec![0.0; n as usize * nsamp as usize].into_boxed_slice(),
             expval_o: vec![0.0; n as usize].into_boxed_slice(),
@@ -78,8 +76,6 @@ impl DerivativeOperator {
             n,
             nsamp,
             nsamp_int,
-            pfaff_off,
-            jas_off,
             epsilon
         }
     }
@@ -130,98 +126,98 @@ fn _save_otilde(der: &DerivativeOperator) {
     println!("{}", outstr);
 }
 
-pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator, sys: &SysParams) {
-    if input.mu != output.mu {
-        error!("Input dimension does not match output dimension. Make sure to match mu for both structures.");
-        panic!("Undefined Behavior.");
-    }
-    if input.mu < 0 {
-        error!("Dimension cannot be negative; is it empty?");
-        panic!("Undefined Behavior");
-    }
-    let nfij = sys.size*sys.size;
-    // Copy and scale fij from FIJ
-    for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
-        unsafe {
-            //println!("{}", output.mu);
-            dcopy(
-                input.mu,
-                &input.o_tilde[i..input.n as usize + input.mu as usize * (i + 1)],
-                input.n,
-                &mut output.o_tilde[(i - nfij)..output.n as usize + output.mu as usize * (i - nfij + 1)],
-                output.n
-            );
-            //for j in 0..nfij {
-            //    dscal(
-            //        output.mu,
-            //        der_facteur,
-            //        &mut output.o_tilde[j+sys.ngi+sys.nvij..output.n as usize + output.mu as usize * (j + 1 + sys.ngi + sys.nvij)],
-            //        output.n,
-            //    )
-            //}
-        }
-
-    }
-    // Copy Gutzwiller and jastrow
-    for i in 0..sys.ngi+sys.nvij {
-        unsafe {
-            dcopy(
-                input.mu,
-                &input.o_tilde[i..input.n as usize * (i + 1)],
-                input.n,
-                &mut output.o_tilde[i..output.n as usize * (i + 1)],
-                output.n
-            );
-        }
-
-    }
-    unsafe {
-        dcopy(
-            nfij as i32,
-            &input.expval_o[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
-            1,
-            &mut output.expval_o[input.pfaff_off..output.pfaff_off + nfij],
-            1
-        );
-        dcopy(
-            nfij as i32,
-            &input.ho[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
-            1,
-            &mut output.ho[input.pfaff_off..input.pfaff_off + nfij],
-            1
-        );
-        //dscal(nfij as i32, der_facteur, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
-        //dscal(nfij as i32, der_facteur, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
-        dcopy(
-            sys.nvij as i32,
-            &input.expval_o[input.jas_off..input.jas_off + sys.nvij],
-            1,
-            &mut output.expval_o[output.jas_off..output.jas_off + sys.nvij],
-            1
-        );
-        dcopy(
-            sys.nvij as i32,
-            &input.ho[input.jas_off..input.jas_off + sys.nvij],
-            1,
-            &mut output.ho[output.jas_off..output.jas_off + sys.nvij],
-            1
-        );
-        dcopy(
-            sys.ngi as i32,
-            &input.expval_o[0..sys.ngi],
-            1,
-            &mut output.expval_o[0..sys.ngi],
-            1
-        );
-        dcopy(
-            sys.ngi as i32,
-            &input.ho[0..sys.ngi],
-            1,
-            &mut output.ho[0..sys.ngi],
-            1
-        );
-    }
-}
+//pub fn mapto_pairwf(input: &DerivativeOperator, output: &mut DerivativeOperator, sys: &SysParams) {
+//    if input.mu != output.mu {
+//        error!("Input dimension does not match output dimension. Make sure to match mu for both structures.");
+//        panic!("Undefined Behavior.");
+//    }
+//    if input.mu < 0 {
+//        error!("Dimension cannot be negative; is it empty?");
+//        panic!("Undefined Behavior");
+//    }
+//    let nfij = sys.size*sys.size;
+//    // Copy and scale fij from FIJ
+//    for i in sys.ngi+sys.nvij+nfij..sys.ngi+sys.nvij+2*nfij {
+//        unsafe {
+//            //println!("{}", output.mu);
+//            dcopy(
+//                input.mu,
+//                &input.o_tilde[i..input.n as usize + input.mu as usize * (i + 1)],
+//                input.n,
+//                &mut output.o_tilde[(i - nfij)..output.n as usize + output.mu as usize * (i - nfij + 1)],
+//                output.n
+//            );
+//            //for j in 0..nfij {
+//            //    dscal(
+//            //        output.mu,
+//            //        der_facteur,
+//            //        &mut output.o_tilde[j+sys.ngi+sys.nvij..output.n as usize + output.mu as usize * (j + 1 + sys.ngi + sys.nvij)],
+//            //        output.n,
+//            //    )
+//            //}
+//        }
+//
+//    }
+//    // Copy Gutzwiller and jastrow
+//    for i in 0..sys.ngi+sys.nvij {
+//        unsafe {
+//            dcopy(
+//                input.mu,
+//                &input.o_tilde[i..input.n as usize * (i + 1)],
+//                input.n,
+//                &mut output.o_tilde[i..output.n as usize * (i + 1)],
+//                output.n
+//            );
+//        }
+//
+//    }
+//    unsafe {
+//        dcopy(
+//            nfij as i32,
+//            &input.expval_o[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
+//            1,
+//            &mut output.expval_o[input.pfaff_off..output.pfaff_off + nfij],
+//            1
+//        );
+//        dcopy(
+//            nfij as i32,
+//            &input.ho[input.pfaff_off + nfij..input.pfaff_off + 2*nfij],
+//            1,
+//            &mut output.ho[input.pfaff_off..input.pfaff_off + nfij],
+//            1
+//        );
+//        //dscal(nfij as i32, der_facteur, &mut output.expval_o[output.pfaff_off..output.pfaff_off + nfij], 1);
+//        //dscal(nfij as i32, der_facteur, &mut output.ho[output.pfaff_off..output.pfaff_off + nfij], 1);
+//        dcopy(
+//            sys.nvij as i32,
+//            &input.expval_o[input.jas_off..input.jas_off + sys.nvij],
+//            1,
+//            &mut output.expval_o[output.jas_off..output.jas_off + sys.nvij],
+//            1
+//        );
+//        dcopy(
+//            sys.nvij as i32,
+//            &input.ho[input.jas_off..input.jas_off + sys.nvij],
+//            1,
+//            &mut output.ho[output.jas_off..output.jas_off + sys.nvij],
+//            1
+//        );
+//        dcopy(
+//            sys.ngi as i32,
+//            &input.expval_o[0..sys.ngi],
+//            1,
+//            &mut output.expval_o[0..sys.ngi],
+//            1
+//        );
+//        dcopy(
+//            sys.ngi as i32,
+//            &input.ho[0..sys.ngi],
+//            1,
+//            &mut output.ho[0..sys.ngi],
+//            1
+//        );
+//    }
+//}
 
 /// Module to calculate pfaffian
 /// # Usage

@@ -5,6 +5,7 @@ use rand::Rng;
 
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
+use crate::optimisation::ParameterMap;
 use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams};
 use crate::density::{compute_internal_product_parts, fast_internal_product, fast_internal_product_exchange};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
@@ -67,11 +68,11 @@ fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug + Send>(s
 
 #[inline(always)]
 fn compute_derivative_operator<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
-(state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams)
+(state: FockState<T>, pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams, pmap: &ParameterMap)
 {
-    compute_gutzwiller_der(state, sys.size, der);
-    compute_jastrow_der(state, der, sys.size);
-    compute_pfaffian_derivative(pstate, der, sys);
+    compute_gutzwiller_der(state, sys.size, der, pmap);
+    compute_jastrow_der(state, der, sys.size, pmap);
+    compute_pfaffian_derivative(pstate, der, sys, pmap);
 }
 
 #[inline(always)]
@@ -276,11 +277,19 @@ fn accumulate_expvals(energy: &mut f64, state_energy: f64, der: &mut DerivativeO
             &mut der.ho,
             incy
         );
+        daxpy(
+            der.n,
+            rho,
+            &der.o_tilde[last_line_begin .. last_line_end],
+            incx,
+            &mut der.expval_o,
+            incy
+        );
     }
     // Accumulate <O>
-    for i in 0 .. der.n as usize {
-        der.expval_o[i] += der.o_tilde[i + last_line_begin] * rho;
-    }
+    //for i in 0 .. der.n as usize {
+    //    der.expval_o[i] += der.o_tilde[i + last_line_begin] * rho;
+    //}
 }
 
 #[inline(always)]
@@ -300,7 +309,7 @@ fn sq(x: f64) -> f64
     x * x
 }
 
-pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator) -> f64
+pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator, pmap: &ParameterMap) -> f64
 {
     if der.mu != -1 {
         error!("The derivative operator current row was mu = {} on entry, is it reinitialized?", der.mu);
@@ -350,7 +359,7 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
         let (pstate, proj) = compute_internal_product_parts(*state2, params, sys);
         norm += sq(<f64>::abs(pstate.pfaff) * <f64>::exp(proj));
         let rho = <f64>::abs(pstate.pfaff) * <f64>::exp(proj);
-        compute_derivative_operator(*state2, &pstate, der, sys);
+        compute_derivative_operator(*state2, &pstate, der, sys, pmap);
         state_energy = compute_hamiltonian(*state2, &pstate, proj, params, sys) * sq(rho);
         accumulate_expvals(&mut energy, state_energy, der, sq(rho));
         der.visited[der.mu as usize] = 1;
@@ -395,7 +404,7 @@ fn _save_otilde(der: &[f64], mu: usize, n: usize) -> String {
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
-(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator) -> (f64, Vec<FockState<T>>, f64, f64)
+(rng: &mut R, initial_state: FockState<T>, params: &VarParams, sys: &SysParams, derivatives: &mut DerivativeOperator, pmap: &ParameterMap) -> (f64, Vec<FockState<T>>, f64, f64)
 where Standard: Distribution<T>
 {
     if derivatives.mu != -1 {
@@ -434,7 +443,7 @@ where Standard: Distribution<T>
     // We need to reset the counter that the warmup increased.
     derivatives.mu = 0;
     // Compute the derivative for the first element in the markov chain
-    compute_derivative_operator(state, &pstate, derivatives, sys);
+    compute_derivative_operator(state, &pstate, derivatives, sys, pmap);
     // Accumulate the first state into the markov chain
     accumulated_states.push(state);
     derivatives.visited[derivatives.mu as usize] += 1;
@@ -481,7 +490,7 @@ where Standard: Distribution<T>
                 // Compute the derivative operator
                 if sample_counter >= sys.mcsample_interval {
                     derivatives.mu += 1;
-                    compute_derivative_operator(state, &pstate, derivatives, sys);
+                    compute_derivative_operator(state, &pstate, derivatives, sys, pmap);
                 }
             }
             if sample_counter >= sys.mcsample_interval {
@@ -553,7 +562,7 @@ where Standard: Distribution<T>
                 // Compute the derivative operator
                 if sample_counter >= sys.mcsample_interval {
                     derivatives.mu += 1;
-                    compute_derivative_operator(state, &pstate, derivatives, sys);
+                    compute_derivative_operator(state, &pstate, derivatives, sys, pmap);
                 }
             }
             if sample_counter >= sys.mcsample_interval {
