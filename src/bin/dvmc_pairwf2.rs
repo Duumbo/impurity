@@ -14,9 +14,9 @@ use impurity::optimisation::ParameterMap;
 
 type BitSize = u128;
 
-const SEED: u64 = 124;
-const SIZE_N: usize = 4;
-const SIZE_M: usize = 4;
+const SEED: u64 = 1243;
+const SIZE_N: usize = 2;
+const SIZE_M: usize = 2;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -24,7 +24,7 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1000;
+const NMCSAMP: usize = 1_000;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = NMCSAMP;
 const NWARMUPCHAINS: usize = NOPTITER;
@@ -43,12 +43,12 @@ const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SHIFT: f64 = 1e-3;
 const OPTIMISATION_TIME_STEP: f64 = 2e-2;
 const OPTIMISATION_DECAY: f64 = 0.0;
-const NOPTITER: usize = 1000;
+const NOPTITER: usize = 2000;
 const ADAMS_BASHFORTH_ORDER: usize = 1;
 const KMAX: usize = NPARAMS;
 const FILTER_BEFORE_SHIFT: bool = false; // Better false (16 sites)
 //const PARAM_THRESHOLD: f64 = <f64>::EPSILON;
-const PARAM_THRESHOLD: f64 = 1e-3;
+const PARAM_THRESHOLD: f64 = 1e-5;
 //const PARAM_THRESHOLD: f64 = 0.0;
 //const PARAM_THRESHOLD: f64 = -<f64>::INFINITY;
 const OPTIMISE: bool = true;
@@ -58,13 +58,14 @@ const OPTIMISE_ORB: bool = true;
 const COMPUTE_ENERGY_METHOD: EnergyComputationMethod = EnergyComputationMethod::MonteCarlo;
 const OPTIMISE_ENERGY_METHOD: EnergyOptimisationMethod = EnergyOptimisationMethod::ConjugateGradiant;
 const _ENERGY_CONV_AVERAGE_SAMPLE: usize = 20;
-const N_GUTZ: usize = NGI;
-const N_JAST: usize = NVIJ;
+//const N_GUTZ: usize = NGI;
+//const N_JAST: usize = NVIJ;
 const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
-const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
-//const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+//const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
+const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+//const N_INDEP_PARAMS: usize = SIZE*SIZE + 1 + NVIJ;
 //const N_INDEP_PARAMS: usize = 3;
 const SET_VIJ_ZERO: bool = true;
 const SET_GI_ZERO: bool = true;
@@ -122,71 +123,6 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = {
     }
     tmp
 };
-
-// Pairwf
-//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = [
-//    /* g0 */    1.0, // 0,
-//    /* g1 */    1.0, 0.0, //
-//    /* v01 */   0.0, 0.0, 0.0,
-//    /* f00uu */ 0.0, 0.0, 0.0, 0.0,
-//    /* f01uu */ 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f10uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f11uu */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f00ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-//    /* f01ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-//    /* f10ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-//    /* f11ud */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-//    /* f00du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f01du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f10du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f11du */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f00dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f01dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f10dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//    /* f11dd */ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-//];
-
-// General rep
-//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
-//    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
-//    let mut j = 0;
-//    let mut n = 0;
-//    while j < NFIJ + NVIJ + NGI {
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j += 1;
-//        n += 1;
-//    }
-//  if n != N_INDEP_PARAMS {
-//      panic!("Number of set independant params is not correct.");
-//  }
-//    param
-//};
-
-
-// General pairwf rep
-//const PARAMS_PROJECTOR: [f64; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI] = {
-//    let mut param = [0.0; (NFIJ + NVIJ + NGI) * (NFIJ + NVIJ + NGI - 1) / 2 + NFIJ + NVIJ + NGI];
-//    let mut j = 0;
-//    let mut n = 0;
-//    while j < NVIJ + NGI {
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j += 1;
-//        n += 1;
-//    }
-//    let mut j = NVIJ + NGI;
-//    while j < SIZE * SIZE + NVIJ + NGI{
-//        j += SIZE * SIZE;
-//        param[j + (j * (j+1) / 2)] = 1.0;
-//        j -= SIZE * SIZE;
-//        j += 1;
-//        n += 1;
-//    }
-//    if n != N_INDEP_PARAMS {
-//        panic!("Number of set independant params is not correct.");
-//    }
-//    param
-//};
-
 
 fn _sq(a: f64) -> f64 {
     <f64>::abs(a) * <f64>::abs(a)
@@ -558,7 +494,18 @@ fn main() {
             vij,
             size: SIZE
         };
-        //let g = parameters.gi[0];
+        //gi=
+        //[ 0.589  0.603 ]
+        //
+        //vij=
+        //[  .     0.487
+        //   .      .    ]
+        //
+        //fij=
+        //[ 0.451  0.599
+        //  0.422  1.000 ]
+        //
+        let g = parameters.gi[0];
         if SET_GI_ZERO {
             for i in 0..NGI {
                 let g = 0.0;
@@ -574,7 +521,7 @@ fn main() {
             for i in 0..SIZE*SIZE {
                 parameters.fij[i] = 0.0;
                 //parameters.fij[i +SIZE*SIZE] = 0.5;
-                parameters.fij[i +SIZE*SIZE] = ORB_MVMC[i];
+                //parameters.fij[i +SIZE*SIZE] = ORB_MVMC[i];
                 parameters.fij[i +2*SIZE*SIZE] = 0.0;
                 parameters.fij[i +3*SIZE*SIZE] = 0.0;
             }

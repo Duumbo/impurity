@@ -7,24 +7,28 @@ use std::thread;
 
 use crate::{BitOps, DerivativeOperator, FockState, SysParams, VarParams};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
-use crate::optimisation::{conjugate_gradiant, ParameterMap};
+use crate::optimisation::{conjugate_gradiant, ParameterMap, exact_overlap_inverse};
 
+/// TODOC
 pub const ADAMS_BASHFORTH_COEFS: [f64; 15] = [
     1.0, 3.0/2.0, -1.0/2.0, 23.0/12.0, -16.0/12.0, 5.0/12.0, 55.0/24.0, -59.0/24.0, 37.0/24.0, -9.0/24.0, 1901.0/720.0, -2774.0/720.0, 2616.0/720.0, -1274.0/720.0, 251.0/720.0
 ];
 
+/// TODOC
 #[derive(Debug)]
 pub enum EnergyOptimisationMethod {
     ExactInverse,
     ConjugateGradiant,
 }
 
+/// TODOC
 #[derive(Debug)]
 pub enum EnergyComputationMethod {
     MonteCarlo,
     ExactSum,
 }
 
+/// TODOC
 #[derive(Debug)]
 pub struct VMCParams {
     pub noptiter: usize,
@@ -169,7 +173,6 @@ where
     let mut out_de = 0.0;
     let mut out_corrtime = 0.0;
     for thread in 0..vmcparams.nthreads {
-        //println!("Energy of thread {} = {}", thread, res_vec[thread].0);
         out_energy += res_vec[thread].0;
         out_de += res_vec[thread].2;
         out_corrtime += res_vec[thread].3;
@@ -256,6 +259,7 @@ fn adams_bashforth_optimisation(
     }
 }
 
+/// TODOC
 pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
     rng: &mut [&mut R],
     initial_state: &mut [FockState<T>],
@@ -307,6 +311,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 },
             }
         };
+        println!("Energy = {}", mean_energy);
         // Watch out, derivatives operator are dirty. Exactly three columns are garbage
 
         // Save energy, error and correlation_time.
@@ -324,7 +329,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
             unsafe {
                 let incx = 1;
                 let incy = 1;
-                // TODO correct the energy computed from thread.
+                // TODO correct the energy computed from thread. This is statistically wrong
                 daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
                 daxpy(der.n, 1.0, &der.ho, incx, &mut b, incy);
             }
@@ -341,9 +346,8 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         let mut _flag: bool = true;
         let ignored_columns = match vmcparams.optimise_energy_method {
             EnergyOptimisationMethod::ExactInverse => {
-                //exact_overlap_inverse(&work_der_vec, &mut b, vmcparams.epsilon, pmap.nparams as i32,
-                //   vmcparams.threshold)
-                todo!()
+                exact_overlap_inverse(&work_der_vec, &mut b, vmcparams.epsilon, pmap.nparams as i32 + 3,
+                   vmcparams.threshold, vmcparams.nthreads, pmap.ngi, pmap.nvij)
             },
             EnergyOptimisationMethod::ConjugateGradiant => {
                 conjugate_gradiant(&work_der_vec, &mut b, &mut x0, vmcparams.epsilon, vmcparams.kmax,
@@ -356,7 +360,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         let mut delta_alpha = vec![0.0; pmap.dim as usize + 3];
         let mut j: usize = 0;
         let mut norm2 = 0.0;
-        for i in 0..pmap.nparams {
+        for i in 0..pmap.nparams+3 {
             if ignored_columns[i] {
                 continue;
             }

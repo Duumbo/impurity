@@ -1,13 +1,24 @@
 use core::panic;
 
 use blas::{daxpy, dcopy, ddot, dgemm, dgemv, dger, dscal};
-use lapack::dsyev;
+use lapack::{dposv, dsyev};
 use log::{error, trace};
 use colored::Colorize;
 
 use crate::{DerivativeOperator};
 
 /// Encoding the index map to a reduced representation
+/// # Implementation details
+/// Implementations for this struct use the `map` as offset in the `DerivativeOperator`
+/// array. Offset of `0` are all written at the same place and not used for
+/// optimisation.
+/// # Map encoding
+/// This struct encodes a Map to and from the general representation with
+/// all the parameters to and from a reduced representation where some parameters
+/// are multiples of other.
+/// This struct is usefull to reduce the dimension of the optimisation and also
+/// reduces the amount of linearly dependant columns, which helps with conditionning.
+/// TODOC
 pub struct ParameterMap {
     /// Number of independant parameters.
     pub nparams: usize,
@@ -50,10 +61,10 @@ impl ParameterMap {
     }
     #[inline(always)]
     fn get_vij(self: &Self, i: usize, k: usize) -> usize {
-        if i + k*(k-1)/2 >= self.nvij {
+        if k + i*(i-1)/2 >= self.nvij {
             panic!("Index out of bounds. {}", i);
         }
-        self.map[self.ngi + i + k*(k-1)/2] + self.ngi + 1
+        self.map[self.ngi + k + i*(i-1)/2] + self.ngi + 1
     }
     pub fn index_vij(self: &Self, otilde: &[f64], i: usize, k: usize, mu: usize) -> f64 {
         let new_index = self.get_vij(i, k);
@@ -110,385 +121,7 @@ impl ParameterMap {
     }
 }
 
-/// Encoding of a map to a reduced representation
-/// # Map encoding
-/// This struct encodes a Map to and from the general representation with
-/// all the parameters to and from a reduced representation where some parameters
-/// are multiples of other.
-/// This struct is usefull to reduce the dimension of the optimisation and also
-/// reduces the amount of linearly dependant columns, which helps with conditionning.
-//pub struct GenParameterMap {
-//    /// Number of independant parameters.
-//    pub dim: i32,
-//    /// Dimension of general representation
-//    pub gendim: i32,
-//    /// Number of general parameters
-//    pub n_genparams: i32,
-//    /// Number of independant gutzwiller parameters.
-//    pub n_independant_gutzwiller: usize,
-//    /// Number of independant jastrow parameters.
-//    pub n_independant_jastrow: usize,
-//    /// The projector from the general representation to the reduced one.
-//    /// Should behave:
-//    /// Ax => \tilde{x} where every exquivalent component of x are sumed in
-//    /// the lowest index and zero elsewhere.
-//    /// Example:
-//    /// A = ((1, 1), (0, 0))
-//    /// x = (a, b)
-//    /// \tilde{x} = (a + b, 0)
-//    /// A will be triangular, so only the upper triangle needs to be stored.
-//    /// If you transpose this matrix, it will reverse this operation somewhat
-//    /// A^T = ((1, 0), (1, 0)
-//    /// A\tilde{x} = (a + b, a + b)
-//    /// This indeed copies the parameter x_0 to x_1. If x_1 is set to half x_0,
-//    /// then
-//    /// A = ((1, 2), (0, 0))
-//    /// x = (a, b), Ax = (a + 2b)
-//    /// Then the coefficient wise-inverse of the transpose is usefull
-//    /// A^T^{-1} = ((1, 0), (1/2, 0))
-//    /// x = (a, 0)
-//    /// \tilde{x} = (a, 1/2 a)
-//    /// It is then usefull to store only the lower triangle of the "inverse" of
-//    /// the transpose, as coefficient don't matter when projecting, but do
-//    /// matter when recovering.
-//    ///
-//    /// Indexing
-//    /// n = dim (dim - 1) / 2 + i - (dim - j) * ( dim - j - 1) / 2
-//    /// Can only have one non zero value per row
-//    ///
-//    /// PERFORMANCE:
-//    /// If performance is an issue, an idea would be to write this matrix inside
-//    /// an integer. This is not done here as it removes to possibility to make
-//    /// a parameter say half another one.
-//    pub projector: Box<[f64]>,
-//}
-//
-//pub trait ReducibleGeneralRepresentation {
-//    /// Overrides b and x0
-//    /// Safety:
-//    /// b and x0 must have lenght self.gendim
-//    fn mapto_general_representation(&self, der: &DerivativeOperator, x0: &mut [f64],) -> DerivativeOperator;
-//    /// Overrides b and x0
-//    /// Safety:
-//    /// b and x0 must have lenght self.gendim
-//    /// On exit, the range [self.dim..self.gendim] contains garbage.
-//    fn mapto_reduced_representation(&self, der: &DerivativeOperator, x0: &mut [f64],) -> DerivativeOperator;
-//    /// Overrides b and x0
-//    /// Safety:
-//    /// b and x0 must have lenght self.gendim
-//    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64],);
-//    /// Overrides b and x0
-//    /// Safety:
-//    /// b and x0 must have lenght self.gendim
-//    /// On exit, the range [self.dim..self.gendim] contains garbage.
-//    fn update_reduced_representation_no_otilde(&self, out_der: &mut DerivativeOperator, mu: i32, expval_o: &[f64], ho: &[f64], visited: &[usize], x0: &mut [f64]);
-//    fn update_delta_alpha_reduced_to_gen(&self, x0: &mut [f64]);
-//    fn parallel_reduced_representation_otilde(&self, der: &DerivativeOperator, otilde: &mut [f64]);
-//}
-//
-//impl<'a> ReducibleGeneralRepresentation for GenParameterMap {
-//    fn mapto_general_representation(&self, der: &DerivativeOperator, x0: &mut [f64]) -> DerivativeOperator
-//    {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//
-//        let mut out_x = vec![0.0; self.gendim as usize];
-//        let n = self.gendim as usize;
-//        let mut out_der = DerivativeOperator::new(self.gendim, der.mu, der.nsamp, der.nsamp_int,
-//            self.n_independant_gutzwiller + self.n_independant_jastrow,
-//            self.n_independant_gutzwiller, der.epsilon);
-//        if der.mu < 0 {
-//            return out_der;
-//        }
-//
-//        // Copy the visited vector
-//        for i in 0..der.mu as usize {
-//            out_der.visited[i] = der.visited[i];
-//        }
-//
-//        // Copy all other data
-//        let mut k = 0;
-//        let mut flag = false;
-//        for j in 0..n {
-//            for i in n..n {
-//                let pij = self.projector[
-//                    j + (i * (i+1) / 2)
-//                ];
-//                if pij != 0.0 {
-//                    out_der.expval_o[i] = pij * der.expval_o[k];
-//                    out_der.ho[i] = pij * der.ho[k];
-//                    out_x[i] = pij * x0[k];
-//                    unsafe {
-//                        let incx = self.dim;
-//                        let incy = self.gendim;
-//                        dcopy(
-//                            der.mu,
-//                            &der.o_tilde[i..(self.dim*der.mu) as usize],
-//                            incx,
-//                            &mut out_der.o_tilde[k..(self.gendim * der.mu) as usize],
-//                            incy
-//                        );
-//                    }
-//                    flag = true;
-//                    //break;
-//                }
-//            }
-//            if flag{
-//                k += 1;
-//                flag = false;
-//            }
-//        }
-//        unsafe {
-//            let incx = 1;
-//            let incy = 1;
-//            dcopy(self.gendim, &out_x, incx, x0, incy);
-//        }
-//
-//        // Should return b and x0 as well
-//        out_der
-//    }
-//
-//    fn mapto_reduced_representation(&self, der: &DerivativeOperator, x0: &mut [f64]) -> DerivativeOperator
-//    {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//        let n = self.gendim as usize;
-//        let mut out_der = DerivativeOperator::new(self.dim, der.mu, der.nsamp, der.nsamp_int,
-//            self.n_independant_gutzwiller + self.n_independant_jastrow,
-//            self.n_independant_gutzwiller, der.epsilon);
-//        if der.mu < 0 {
-//            return out_der;
-//        }
-//
-//        // Copy the visited vector
-//        for i in 0..der.mu as usize {
-//            out_der.visited[i] = der.visited[i];
-//        }
-//
-//        // Copy all other data
-//        // iter over transpose's diagonal
-//        let mut i: usize = 0;
-//        for j in 0..n {
-//            let pjj = self.projector[
-//                    j + (j * (j+1) / 2)
-//            ];
-//            if pjj != 0.0 { // If 0, parameter does not map to itself.
-//                if pjj != 1.0 {
-//                    error!("Parameters must map to themselfs with multiple 1.");
-//                    panic!("Undefined behavior.");
-//                }
-//                out_der.expval_o[i] = der.expval_o[j];
-//                out_der.ho[i] = der.ho[j];
-//                // Modify the vectors inplace, we won't iterate on past values
-//                x0[i] = x0[j];
-//                unsafe {
-//                    let incx = self.gendim;
-//                    let incy = self.dim;
-//                    dcopy(
-//                        der.mu,
-//                        &der.o_tilde[j..n*der.mu as usize],
-//                        incx,
-//                        &mut out_der.o_tilde[i..(self.dim * der.mu) as usize],
-//                        incy
-//                    );
-//                }
-//                // Filling the independant parameter index
-//                i += 1;
-//            }
-//        }
-//        if i != self.dim as usize {
-//            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
-//            panic!("Undefined behavior.");
-//        }
-//
-//        out_der
-//    }
-//
-//    fn update_general_representation(&self, der: &DerivativeOperator, out_der: &mut DerivativeOperator, x0: &mut [f64]) {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//
-//        let mut out_x = vec![0.0; self.gendim as usize];
-//        let n = self.gendim as usize;
-//        out_der.mu = der.mu;
-//
-//        // Copy the visited vector
-//        for i in 0..der.mu as usize {
-//            out_der.visited[i] = der.visited[i];
-//        }
-//
-//        // Copy all other data
-//        let mut k = 0;
-//        let mut flag = false;
-//        for j in 0..n {
-//            for i in j..n {
-//                let pij = self.projector[
-//                    j + (i * (i+1) / 2)
-//                ];
-//                if pij != 0.0 {
-//                    out_der.expval_o[i] = pij * der.expval_o[k];
-//                    out_der.ho[i] = pij * der.ho[k];
-//                    out_x[i] = pij * x0[k];
-//                    unsafe {
-//                        let incx = self.dim;
-//                        let incy = self.gendim;
-//                        dcopy(
-//                            der.mu,
-//                            &der.o_tilde[i..(self.dim*der.mu) as usize],
-//                            incx,
-//                            &mut out_der.o_tilde[k..(self.gendim * der.mu) as usize],
-//                            incy
-//                        );
-//                    }
-//                    flag = true;
-//                    //break;
-//                }
-//            }
-//            if flag{
-//                k += 1;
-//                flag = false;
-//            }
-//        }
-//        unsafe {
-//            let incx = 1;
-//            let incy = 1;
-//            dcopy(self.gendim, &out_x, incx, x0, incy);
-//        }
-//    }
-//
-//    fn update_delta_alpha_reduced_to_gen(&self, x0: &mut [f64]) {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//        let n = self.gendim as usize;
-//        let mut out_x0 = vec![0.0; n];
-//
-//        // Copy all other data
-//        // iter over transpose's diagonal
-//        // Copy all other data
-//        let mut k = 0;
-//        let mut flag = false;
-//        for j in 0..n {
-//            for i in j..n {
-//                let pij = self.projector[
-//                    j + (i * (i+1) / 2)
-//                ];
-//                if pij != 0.0 {
-//                    out_x0[i] = pij * x0[k];
-//                    flag = true;
-//                    //break;
-//                }
-//            }
-//            if flag{
-//                k += 1;
-//                flag = false;
-//            }
-//        }
-//        unsafe {
-//            let incx = 1;
-//            let incy = 1;
-//            dcopy(self.gendim, &out_x0, incx, x0, incy);
-//        }
-//    }
-//
-//    fn update_reduced_representation_no_otilde(&self, out_der: &mut DerivativeOperator, mu: i32, expval_o: &[f64], ho: &[f64], visited: &[usize], x0: &mut [f64]) {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//        let n = self.gendim as usize;
-//        out_der.mu = mu;
-//
-//        // Copy the visited vector
-//        for i in 0..mu as usize {
-//            out_der.visited[i] = visited[i];
-//        }
-//
-//        // Copy all other data
-//        // iter over transpose's diagonal
-//        let mut i = 0;
-//        for j in 0..n {
-//            let pjj = self.projector[
-//                    j + (j * (j+1) / 2)
-//            ];
-//            if pjj != 0.0 { // If 0, parameter does not map to itself.
-//                if pjj != 1.0 {
-//                    error!("Parameters must map to themselfs with multiple 1.");
-//                    panic!("Undefined behavior.");
-//                }
-//                out_der.expval_o[i] = expval_o[j];
-//                out_der.ho[i] = ho[j];
-//                // Modify the vectors inplace, we won't iterate on past values
-//                x0[i] = x0[j];
-//                // Filling the independant parameter index
-//                i += 1;
-//            }
-//        }
-//        if i != self.dim as usize {
-//            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
-//            panic!("Undefined behavior.");
-//        }
-//    }
-//
-//    fn parallel_reduced_representation_otilde(&self, der: &DerivativeOperator, otilde: &mut [f64]) {
-//        if self.dim == 0 {
-//            error!("Tried to map from an empty parameter representation, this will
-//                break conjugate gradient or diagonalisation. Dim = {}", self.dim);
-//            panic!("Undefined behavior.");
-//        }
-//        let n = self.gendim as usize;
-//
-//        // iter over transpose's diagonal
-//        let mut i = 0;
-//        for j in 0..n {
-//            let pjj = self.projector[
-//                    j + (j * (j+1) / 2)
-//            ];
-//            if pjj != 0.0 { // If 0, parameter does not map to itself.
-//                if pjj != 1.0 {
-//                    error!("Parameters must map to themselfs with multiple 1.");
-//                    panic!("Undefined behavior.");
-//                }
-//                // Test for collision
-//                if otilde[i] != 0.0 {
-//                    error!("O tilde is not empty. Was it reset? Is there pointer collision?");
-//                    panic!("Undefined behavior.");
-//                }
-//                unsafe {
-//                    let incx = self.gendim;
-//                    let incy = self.dim;
-//                    dcopy(
-//                        der.mu,
-//                        &der.o_tilde[j..n*der.mu as usize],
-//                        incx,
-//                        &mut otilde[i..(self.dim * der.mu) as usize],
-//                        incy
-//                    );
-//                }
-//                // Filling the independant parameter index
-//                i += 1;
-//            }
-//        }
-//        if i != self.dim as usize {
-//            error!("Parameter map did not yield a dimension of {}, instead got {}", self.dim, i);
-//            panic!("Undefined behavior.");
-//        }
-//    }
-//}
-
-fn gradient(x: &[f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[Box<[f64]>], b: &mut [f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64) {
+fn gradient(x: &[f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[f64], b: &mut [f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64, nthreads: f64) {
     let alpha = -1.0;
     let incx = 1;
     let incy = 1;
@@ -510,7 +143,7 @@ fn update_x(x: &mut [f64], pk: &[f64], alpha: f64, dim: i32) {
     };
 }
 
-fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[Box<[f64]>], p: &[f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64) {
+fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[f64], p: &[f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64) {
     // Computes Ap
     if dim == 0 {
         error!("Cannot compute the matrix product of dimension 0. Something happened with the cutting of dimensions that is not accounted for");
@@ -538,13 +171,15 @@ fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_
             }
             dgemv(b"N"[0], dim, mu[i], 1.0 / nsamp, o, dim, &work, incx, gamma, w, incy);
             trace!("O_[m, mu] O^[T]_[mu, n] x_[n] = {:?}", w);
-            let alpha = ddot(dim, &expval_o[i], incx, p, incy);
-            // 81 misawa
-            daxpy(dim, - alpha, &expval_o[i], incx, w, incy);
         }
-        for i in 0..dim as usize {
-            w[i] += p[i] * diag_epsilon[i];
-        }
+    }
+    unsafe {
+        let alpha = ddot(dim, &expval_o, incx, p, incy);
+        // 81 misawa
+        daxpy(dim, - alpha, &expval_o, incx, w, incy);
+    }
+    for i in 0..dim as usize {
+        w[i] += p[i] * diag_epsilon[i];
     }
 }
 
@@ -632,16 +267,15 @@ fn prefilter_overlap_matrix(a_vec: &[DerivativeOperator], _ignore_idx: &mut [boo
                 //tmp
                 z += tmp / a.mu as f64
             }
-            z
+            z / nthreads as f64
         };
 
         // Now \Re{\expval{O_k}}^2
         let z2: f64 = {
             let mut z = 0.0;
-            for a in a_vec.iter() {
-                z += a.expval_o[k] * a.expval_o[k]
-            }
-            z / nthreads as f64
+            z += a_vec[0].expval_o[k] * a_vec[0].expval_o[k];
+            // Statistically wrong, but good enough?
+            z
         };
 
         if filter_before_shift {
@@ -655,6 +289,9 @@ fn prefilter_overlap_matrix(a_vec: &[DerivativeOperator], _ignore_idx: &mut [boo
     let mut max_elem = <f64>::MIN;
     let mut min_elem = <f64>::MAX;
     for k in 0..dim as usize {
+        if _ignore_idx[k] {
+            continue;
+        }
         if diag_elem[k] > max_elem {
             max_elem = diag_elem[k];
         }
@@ -662,12 +299,14 @@ fn prefilter_overlap_matrix(a_vec: &[DerivativeOperator], _ignore_idx: &mut [boo
             min_elem = diag_elem[k];
         }
     }
-    if min_elem < _diag_threshold * max_elem {
-        for k in 0..dim as usize {
-            if diag_elem[k] < _diag_threshold * max_elem {
-                skip_param_count += 1;
-                _ignore_idx[k] = true;
-            }
+    for k in 0..dim as usize {
+        if _ignore_idx[k] {
+            skip_param_count += 1;
+            continue;
+        }
+        if diag_elem[k] < _diag_threshold * max_elem {
+            skip_param_count += 1;
+            _ignore_idx[k] = true;
         }
     }
     let mut n = 0;
@@ -684,7 +323,7 @@ fn prefilter_overlap_matrix(a_vec: &[DerivativeOperator], _ignore_idx: &mut [boo
 
 }
 
-fn cpy_segmented_matrix_to_dense(a_vec: &[DerivativeOperator], output_otilde: &mut [Box<[f64]>], output_expvalo: &mut [Box<[f64]>], ignore_idx: &[bool], dim: i32, nparams_opt: usize) {
+fn cpy_segmented_matrix_to_dense(a_vec: &[DerivativeOperator], output_otilde: &mut [Box<[f64]>], output_expvalo: &mut [f64], ignore_idx: &[bool], dim: i32, nparams_opt: usize) {
     for (ii, a) in a_vec.iter().enumerate() {
         let mut j: usize = 0;
         if a.mu == 0 {
@@ -702,16 +341,28 @@ fn cpy_segmented_matrix_to_dense(a_vec: &[DerivativeOperator], output_otilde: &m
             unsafe {
                 dcopy(
                     a.mu,
-                    &a.o_tilde[k..(a.mu * a.n) as usize + k - a.n as usize],
+                    &a.o_tilde[k..(a.mu * dim) as usize + k - dim as usize],
                     a.n,
                     &mut output_otilde[ii][j..nparams_opt * a.mu as usize - nparams_opt + j],
                     nparams_opt as i32
                 );
             }
-            output_expvalo[ii][j] = a.expval_o[k];
             j += 1;
 
         }
+    }
+    let mut j = 0;
+    for k in 0..dim as usize {
+        if j > nparams_opt {
+            error!("Supplied dimension does not match allocated memory.");
+            panic!("Undefined behavior");
+        }
+        if ignore_idx[k] {
+            output_expvalo[k] = 0.0;
+            continue;
+        }
+        output_expvalo[j] = output_expvalo[k];
+        j += 1;
     }
 }
 
@@ -728,7 +379,7 @@ fn compute_s_explicit(otilde: &[f64], expval_o: &[f64], visited: &[usize], dim: 
             otilde_w_visited[j + i*dim as usize] = otilde[j + i*dim as usize] * visited[i] as f64;
         }
     }
-    //println!("{}", _save_otilde(&otilde, mu as usize, dim as usize));
+    //println!("O = {}", _save_otilde(&otilde, mu as usize, dim as usize));
     //println!("{:?}", visited);
 
     // Temp work vector
@@ -847,102 +498,92 @@ fn _compute_matrix_product(s: &mut [f64], eigenvectors: &[f64], eigenvalues: &[f
     }
 }
 
-//pub fn exact_overlap_inverse(a: &DerivativeOperator, b: &mut [f64], epsilon: f64, dim: i32, thresh: f64) -> Vec<bool>{
-//    // PRE FILTER
-//    let mut ignore = vec![false; dim as usize];
-//    //println!("dim = {}, Unfiltered S = ", dim);
-//    //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
-//    let (new_dim, _) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, true);
-//    let mut otilde = vec![0.0; new_dim * a.mu as usize].into_boxed_slice();
-//    let mut expvalo = vec![0.0; new_dim].into_boxed_slice();
-//    cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
-//    //println!("{}", _save_otilde(&a.o_tilde, a.mu as usize, a.n as usize));
-//    let mut filtered_s = compute_s_explicit(&otilde, &expvalo, &a.visited, new_dim as i32, a.mu, a.nsamp, epsilon);
-//    let mut work = vec![0.0; new_dim];
-//    unsafe {
-//        dgemv(b"N"[0], new_dim as i32, new_dim as i32, 1.0, &filtered_s, new_dim as i32, &b, 1, 0.0, &mut work, 1);
-//    }
-//    println!("Ax = {:?}", work);
-//    println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
-//    println!("a.mu = {}, a.n = {}", a.mu, a.n);
-//    println!("dim = {}, new_dim = {}", dim, new_dim);
-//    let mut _unfiltered_s = compute_s_explicit(&a.o_tilde, &a.expval_o, &a.visited, dim as i32, a.mu, a.nsamp, epsilon);
-//    //for i in 0..dim as usize {
-//    //    if ignore[i] {
-//    //        println!("{}", _save_otilde(&filtered_s, new_dim, new_dim));
-//    //        println!("ignore : {:?}", ignore);
-//    //        println!("{}", _save_otilde(&unfiltered_s, dim as usize, dim as usize));
-//    //        panic!("stop");
-//    //        break;
-//
-//    //    }
-//    //}
-//    // Test matrix are equal
-//    //for i in 0..dim as usize {
-//    //    for j in 0.. dim as usize {
-//    //        if ! (filtered_s[j + i * dim as usize] == unfiltered_s[j + i * dim as usize]) {
-//    //            panic!("Assertion");
-//    //        }
-//    //    }
-//    //}
-//    //println!("dim = {}, Unfiltered S = ", dim);
-//    //println!("{}", _save_otilde(&unfiltered_s, dim as usize, dim as usize));
-//    //let new_dim = prefilter_overlap_matrix(a, &mut ignore, dim, thresh);
-//    ////println!("ignore : {:?}", ignore);
-//    //let mut otilde = vec![0.0; new_dim * a.mu as usize];
-//    //let mut expvalo = vec![0.0; new_dim];
-//    //cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
-//    //let filtered_s = compute_s_explicit(&otilde, &expvalo, a.visited, new_dim as i32, a.mu, a.nsamp);
-//    let eigenvalues = diagonalize_dense_matrix(&mut filtered_s, new_dim as i32);
-//    let _eigenvalues = diagonalize_dense_matrix(&mut _unfiltered_s, dim as i32);
-//    //_compute_matrix_product(&mut s_copy, &unfiltered_s, &eigenvalues, dim);
-//    //println!("S^[-1] = \n{}", _save_otilde(&s_copy, dim as usize, dim as usize));
-//    //let eigenvectors = &unfiltered_s;
-//    //println!("S = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
-//    //compute_matrix_product(&mut s_copy, &eigenvectors, &eigenvalues, dim);
-//    //println!("S^[-1] = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
-//    //panic!("stop");
-//    //let mut x0_raw = vec![0.0; dim as usize];
-//    //unsafe {
-//    //    let incx = 1;
-//    //    let incy = 1;
-//    //    dgemv(b"T"[0], dim, dim, 1.0, &s_copy, dim, x0, incx, 0.0, &mut x0_raw, incy);
-//    //}
-//    //println!("UD^[-1]U^[T] = \n{}", save_otilde(&s_copy, dim as usize, dim as usize));
-//    //println!("x0 = {:?}", x0_raw);
-//    println!("filted eigenvalues: {:?}", eigenvalues);
-//    println!("eigenvalues: {:?}", _eigenvalues);
-//
-//    // Remove problematic eigenvalue
-//    //let mut max = <f64>::MIN;
-//    ////println!("{:?}", eigenvalues);
-//    //for e in eigenvalues.iter() {
-//    //    if *e > max {
-//    //        max = *e;
-//    //    }
-//    //}
-//    //let threshold = thresh * max;
-//    //let mut i = 0;
-//    //for e in eigenvalues.iter_mut() {
-//    //    if *e < threshold {
-//    //        *e = 0.0;
-//    //        //ignore[i] = true;
-//    //    }
-//    //    i+=1;
-//    //}
-//    ////println!("{:?}", ignore);
-//    ////Invert matrix
-//    //for e in eigenvalues.iter_mut() {
-//    //    if *e == 0.0 {
-//    //        continue;
-//    //    }
-//    //    *e = 1.0 / *e;
-//    //}
-//    compute_delta_from_eigenvalues(b, &filtered_s, &eigenvalues, new_dim as i32);
-//    //println!("b = {:?}", b);
-//
-//    return ignore;
-//}
+/// TODOC
+pub fn exact_overlap_inverse(a: &[DerivativeOperator], b: &mut [f64], epsilon: f64, dim: i32, thresh: f64, nthreads: usize, ngi: usize, nvij: usize) -> Vec<bool>{
+    // PRE FILTER
+    let mut ignore = vec![false; dim as usize];
+    if !ignore[0] {
+        ignore[0] = true;
+    }
+    if !ignore[ngi + 1] {
+        ignore[ngi + 1] = true;
+    }
+    if !ignore[ngi + nvij + 2] {
+        ignore[ngi + nvij + 2] = true;
+    }
+    //println!("dim = {}, Unfiltered S = ", dim);
+    //println!("{}", save_otilde(&unfiltered_s, dim as usize, dim as usize));
+    let (new_dim, _) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, true, nthreads);
+    let mut otilde = Vec::new();
+    let mut expvalo = vec![0.0; dim as usize];
+    let mut vis: Vec<&[usize]> = Vec::new();
+    let mut mus = Vec::new();
+    let mut nsamp = 0.0;
+    for a in a.iter() {
+        let otildei = vec![0.0; new_dim * a.mu as usize].into_boxed_slice();
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            daxpy(dim, 1.0 / nthreads as f64, &a.expval_o, incx, &mut expvalo, incy);
+        }
+        otilde.push(otildei);
+        vis.push(&a.visited);
+        mus.push(a.mu);
+        nsamp += a.nsamp;
+    }
+    cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
+    let mut j = 0;
+    for i in 0..dim as usize {
+        if ignore[i] {
+            b[i] = 0.0;
+            continue;
+        }
+        b[j] = b[i];
+        j += 1;
+    }
+    //println!("{}", _save_otilde(&a.o_tilde, a.mu as usize, a.n as usize));
+    println!("expvalo og = {:?}", a[0].expval_o);
+    println!("expvalo cop = {:?}", expvalo);
+    let mut filtered_s = compute_s_explicit(&otilde[0], &expvalo, &a[0].visited, new_dim as i32, mus[0], a[0].nsamp, epsilon);
+    let mut work = vec![0.0; new_dim];
+    unsafe {
+        dgemv(b"N"[0], new_dim as i32, new_dim as i32, 1.0, &filtered_s, new_dim as i32, &b, 1, 0.0, &mut work, 1);
+    }
+    println!("Ax = {:?}", work);
+    println!("b = {:?}", b);
+    println!("epsilon = {}", epsilon);
+    println!("dim = {}", dim);
+    println!("new_dim = {}", new_dim);
+    println!("S filtered");
+    println!("ignore = {:?}", ignore);
+    println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
+    println!("S");
+    //println!("a.mu = {}, a.n = {}", a.mu, a.n);
+    println!("dim = {}, new_dim = {}", dim, new_dim);
+    let mut _unfiltered_s = compute_s_explicit(&a[0].o_tilde, &a[0].expval_o, &a[0].visited, dim as i32, a[0].mu, a[0].nsamp, epsilon);
+    println!("{}", _save_otilde(&_unfiltered_s, dim as usize, dim as usize));
+
+    let mut info = 0;
+    unsafe {
+        let nrhs = 1;
+        dposv(b"U"[0], new_dim as i32, nrhs, &mut filtered_s[0..new_dim*new_dim - 1], new_dim as i32, b, new_dim as i32, &mut info);
+    }
+    println!("b = {:?}", b);
+    let mut det = 1.0;
+    for i in 0..new_dim {
+        det *= filtered_s[i + i*new_dim]*filtered_s[i + i*new_dim];
+    }
+    println!("det = {}", det);
+
+    //let eigenvalues = diagonalize_dense_matrix(&mut filtered_s, new_dim as i32);
+    //let _eigenvalues = diagonalize_dense_matrix(&mut _unfiltered_s, dim as i32);
+    //println!("filted eigenvalues: {:?}", eigenvalues);
+    //println!("eigenvalues: {:?}", _eigenvalues);
+
+    //compute_delta_from_eigenvalues(b, &filtered_s, &eigenvalues, new_dim as i32);
+
+    return ignore;
+}
 
 /// Computes the solution of $A\mathbf{x}-\mathbf{b}=0$
 /// TODOC
@@ -952,39 +593,47 @@ pub fn conjugate_gradiant(a: &[DerivativeOperator], b: &mut [f64], x0: &mut [f64
 {
     // PRE FILTER
     let mut ignore = vec![false; dim as usize];
-    let (mut new_dim, mut diag_epsilon) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, filter_before_shift, nthreads);
-    // ALWAYS DELETE THE FIRST COLUMN OR EACH PARAMETER TYPE
-    // this houses garbage data, this data gets there because of the parameter map
     if !ignore[0] {
         ignore[0] = true;
-        new_dim -= 1;
     }
     if !ignore[ngi + 1] {
         ignore[ngi + 1] = true;
-        new_dim -= 1;
     }
     if !ignore[ngi + nvij + 2] {
         ignore[ngi + nvij + 2] = true;
-        new_dim -= 1;
     }
+    let (new_dim, mut diag_epsilon) = prefilter_overlap_matrix(a, &mut ignore, dim, thresh, epsilon, filter_before_shift, nthreads);
+    // ALWAYS DELETE THE FIRST COLUMN OR EACH PARAMETER TYPE
+    // this houses garbage data, this data gets there because of the parameter map
 
     let mut otilde = Vec::new();
-    let mut expvalo = Vec::new();
+    let mut expvalo = vec![0.0; dim as usize];
     let mut vis: Vec<&[usize]> = Vec::new();
     let mut mus = Vec::new();
     let mut nsamp = 0.0;
     for a in a.iter() {
         let otildei = vec![0.0; new_dim * a.mu as usize].into_boxed_slice();
-        let expvaloi = vec![0.0; new_dim].into_boxed_slice();
+        unsafe {
+            let incx = 1;
+            let incy = 1;
+            daxpy(dim, 1.0 / nthreads as f64, &a.expval_o, incx, &mut expvalo, incy);
+        }
         otilde.push(otildei);
-        expvalo.push(expvaloi);
         vis.push(&a.visited);
         mus.push(a.mu);
         nsamp += a.nsamp;
     }
     cpy_segmented_matrix_to_dense(a, &mut otilde, &mut expvalo, &ignore, dim, new_dim);
-
+    //let mut filtered_s = compute_s_explicit(&otilde[0], &expvalo, &a[0].visited, new_dim as i32, mus[0], a[0].nsamp, epsilon);
+    //println!("");
+    //println!("");
+    //println!("new_dim = {}", new_dim);
+    //println!("Filtered S =");
+    //println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
+    //println!("");
+    //println!("");
     let mut w = vec![0.0; new_dim].into_boxed_slice();
+
     // Error threshold
     let mut e = 0.0;
     let mut j = 0;
@@ -999,53 +648,40 @@ pub fn conjugate_gradiant(a: &[DerivativeOperator], b: &mut [f64], x0: &mut [f64
         diag_epsilon[j] = diag_epsilon[i];
         j += 1;
     }
-    // Sanity check
-    for i in 0..dim as usize {
-        if i >= j {
-            b[i] = 0.0;
-            diag_epsilon[i] = 0.0;
-        }
-    }
     e *= epsilon_convergence;
     trace!("Error threshold e = {}", e);
-    //println!("Error threshold e = {}", e);
-    gradient(x0, &otilde, &vis, &expvalo, b, &diag_epsilon, new_dim as i32, &mus, nsamp);
+
+    gradient(x0, &otilde, &vis, &expvalo, b, &diag_epsilon, new_dim as i32, &mus, nsamp, nthreads as f64);
     let mut p = vec![0.0; new_dim].into_boxed_slice();
     unsafe {
         dcopy(new_dim as i32, b, 1, &mut p, 1);
     }
     let mut alpha = 0.0;
 
-    for k in 0..kmax {
-        trace!("r_{} : {:?}", k, b);
-        trace!("p_{} : {:?}", k, p);
-        //println!("r_{} : {:?}", k, b);
-        //println!("p_{} : {:?}", k, p);
+    let mut n_cg_max = kmax;
+    if n_cg_max > new_dim {
+        n_cg_max = new_dim;
+    }
+    for k in 0..n_cg_max {
         compute_w(&mut w, &otilde, &vis, &expvalo, &p, &diag_epsilon, new_dim as i32, &mus, nsamp);
-        //println!("w_{} : {:?}", k, w);
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
-        trace!("alpha_{} : {}", k, alpha);
-        //println!("alpha_{} : {}", k, alpha);
-        //if alpha < 0.0 {
-        //    error!("Input overlap matrix S was not positive-definite.");
-        //    //break;
-        //    panic!("p^T S p < 0.0");
-        //}
+        if alpha < 0.0 {
+            error!("Input overlap matrix S was not positive-definite.");
+            panic!("p^T S p < 0.0");
+        }
         update_x(x0, &p, alpha, new_dim as i32);
-        trace!("x_{} : {:?}", k+1, x0);
-        //println!("x_{} : {:?}", k+1, x0);
         update_r(b, &w, alpha, new_dim as i32);
         let beta = beta_k(b, nrm2rk, new_dim as i32);
         if beta * nrm2rk < e {
             trace!("Achieved convergence at {} iterations", k);
             break;
         }
-        trace!("beta_{} : {}", k, beta);
         update_p(b, &mut p, beta, new_dim as i32);
     }
     unsafe {
         dcopy(new_dim as i32, x0, 1, b, 1);
     }
-    //println!("b = {:?}", b);
+    //println!("Output delta a = {:?}", b);
+    //println!("ignore = {:?}", ignore);
     ignore
 }

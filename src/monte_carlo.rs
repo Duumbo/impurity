@@ -309,6 +309,7 @@ fn sq(x: f64) -> f64
     x * x
 }
 
+/// TODOC
 pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut DerivativeOperator, pmap: &ParameterMap) -> f64
 {
     if der.mu != -1 {
@@ -354,8 +355,12 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
     let mut norm = 0.0;
     der.mu = 0;
     let mut state_energy;
+    println!("");
+    println!("Computing exact <E>");
+    println!("");
 
     for state2 in all_states.iter() {
+        println!("State: {}", state2);
         let (pstate, proj) = compute_internal_product_parts(*state2, params, sys);
         norm += sq(<f64>::abs(pstate.pfaff) * <f64>::exp(proj));
         let rho = <f64>::abs(pstate.pfaff) * <f64>::exp(proj);
@@ -363,10 +368,14 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
         state_energy = compute_hamiltonian(*state2, &pstate, proj, params, sys) * sq(rho);
         accumulate_expvals(&mut energy, state_energy, der, sq(rho));
         der.visited[der.mu as usize] = 1;
+        println!("mu = {}", der.mu);
+        println!("n = {}", der.n);
+        println!("OTILDE = \n{}", _save_otilde(&der.o_tilde[(der.n * der.mu) as usize..(der.n * (der.mu + 1)) as usize], 1, der.n as usize));
         for i in 0..der.n as usize {
             der.o_tilde[i + (der.n * der.mu) as usize] *= rho;
         }
         der.mu += 1;
+        println!("");
 
     }
     for i in 0.. der.n as usize {
@@ -379,9 +388,11 @@ pub fn compute_mean_energy_exact(params: &VarParams, sys: &SysParams, der: &mut 
             der.o_tilde[j + i * der.n as usize] *= 1.0 / <f64>::sqrt(norm);
         }
     }
-    //println!("<O> = {:?}", der.expval_o);
-    //println!("<HO> = {:?}", der.ho);
-    //println!("<E> = {:?}", energy / norm);
+    println!("<O> = {:?}", der.expval_o);
+    println!("<HO> = {:?}", der.ho);
+    println!("<E> = {:?}", energy / norm);
+    println!("");
+    println!("");
     energy / norm
 }
 
@@ -401,6 +412,7 @@ fn _save_otilde(der: &[f64], mu: usize, n: usize) -> String {
     o_tilde
 }
 
+/// TODOC
 pub fn compute_mean_energy
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
@@ -417,6 +429,7 @@ where Standard: Distribution<T>
     let mut _lip = <f64>::ln(<f64>::abs(<f64>::exp(proj) * pstate.pfaff)) * 2.0;
     let mut n_accepted_updates: usize = 0;
     let mut energy: f64 = 0.0;
+    let mut state_changed: bool = false;
     let mut _energy_sq: f64 = 0.0;
     let mut proj_copy_persistent = proj;
     let mut ratio_prod = 1.0;
@@ -470,6 +483,9 @@ where Standard: Distribution<T>
             if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
                 // We ACCEPT
                 trace!("Accept.");
+                // Keep in memory we changed the state. Need to recompute the
+                // derivatives now.
+                state_changed = true;
                 n_accepted_updates += 1;
                 make_update(
                     &mut n_accepted_updates,
@@ -487,13 +503,13 @@ where Standard: Distribution<T>
                     params,
                     sys
                 );
+            }
+            if sample_counter >= sys.mcsample_interval {
                 // Compute the derivative operator
-                if sample_counter >= sys.mcsample_interval {
+                if state_changed {
                     derivatives.mu += 1;
                     compute_derivative_operator(state, &pstate, derivatives, sys, pmap);
                 }
-            }
-            if sample_counter >= sys.mcsample_interval {
                 accumulated_states.push(state);
                 derivatives.visited[derivatives.mu as usize] += 1;
                 let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
@@ -505,6 +521,9 @@ where Standard: Distribution<T>
                 if mc_it >= (sys.nmcsample - sys.nbootstrap) * sys.mcsample_interval {
                     energy_bootstraped += energy;
                 }
+                // We don't need to recompute the derivatives until the state
+                // changes again.
+                state_changed = false;
             }
             sample_counter += 1;
         } else {
@@ -598,6 +617,7 @@ where Standard: Distribution<T>
     if derivatives.mu == -1 {
         warn!("Parameter mu was -1 on exit, was it updated?");
     }
+
     let correlation_time = 0.5 * ((error[error_estimation_level-1]/error[0])*(error[error_estimation_level-1]/error[0]) - 1.0);
     (energy_bootstraped, accumulated_states, error[error_estimation_level - 1], correlation_time)
 }

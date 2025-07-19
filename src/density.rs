@@ -7,6 +7,7 @@ use crate::gutzwiller::{compute_gutzwiller_exp, fast_update_gutzwiller, fast_upd
 use crate::pfaffian::{construct_matrix_a_from_state, get_pfaffian_ratio, get_pfaffian_ratio_exchange, PfaffianState};
 use crate::{BitOps, FockState, Spin, SpinState, VarParams, SysParams};
 
+/// TODOC
 pub fn compute_internal_product<T>(
     state: FockState<T>,
     params: &VarParams,
@@ -29,6 +30,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
     <f64>::ln(scalar_prod) * 2.0
 }
 
+/// TODOC
 pub fn compute_internal_product_parts<T>(
     state: FockState<T>,
     params: &VarParams,
@@ -47,6 +49,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + std::ops::Shl
     (pfaffian_state, jastrow_exp + gutz_exp)
 }
 
+/// TODOC
 pub fn fast_internal_product_no_otilde<T>(
     previous_state: &FockState<T>,
     new_state: &FockState<T>,
@@ -86,6 +89,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     (pfaffian_ratio, b_vec, col)
 }
 
+/// TODOC
 pub fn fast_internal_product_spin_change<T>(
     previous_state: &FockState<T>,
     new_state: &FockState<T>,
@@ -118,6 +122,7 @@ where T: BitOps + std::fmt::Debug + std::fmt::Display + From<SpinState> + std::o
     (pfaffian_ratio, b_vec, col)
 }
 
+/// TODOC
 pub fn fast_internal_product_exchange(
     previous_pstate: &PfaffianState,
     exchange: &(usize, usize),
@@ -138,6 +143,7 @@ pub fn fast_internal_product_exchange(
     ip.0
 }
 
+/// TODOC
 pub fn fast_internal_product<T>(
     previous_state: &FockState<T>,
     new_state: &FockState<T>,

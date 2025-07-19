@@ -6,13 +6,13 @@ use pfapack::skpfa;
 use std::fmt;
 
 /// Represents the Pfaffian state $\lvert\phi_{\text{PF}}\rangle$.
-/// #TODOC
+/// TODOC
 /// # Fields
 /// * __`coeffs`__ - The variationnal parameters $f_{ij}$.
 /// * __`n_elec`__ - The number of electrons. This value is constant and
 /// determines the size of the matrix $A$.
 /// * __`matrix`__ - The matrix $A$. This is the matrix that we need the pfaffian
-/// to get the inner product $\braket{x}{\phi_{\text{PF}}}$
+/// to get the inner product $\braket{x|\phi_{\text{PF}}}$
 /// * __`curr_state`__ - The current state of that the matrix $A$ is written in.
 #[derive(Debug, Clone)]
 pub struct PfaffianState {
@@ -126,6 +126,7 @@ fn transpose(a: &Vec<f64>, n: usize) -> Vec<f64>{
 /// # Fields
 /// * __`fij`__ - All the variationnal parameters.
 /// * __`state`__ - The state of the system.
+/// TODOC
 pub fn construct_matrix_a_from_state<T>(fij: &[f64], state: FockState<T>, sys: &SysParams) -> PfaffianState
 where
     T: BitOps + std::fmt::Display + Send,
@@ -222,6 +223,7 @@ where
     }
 }
 
+/// TODOC
 pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeOperator, sys: &SysParams, map: &ParameterMap)
 {
     // Temporary bindings
@@ -286,6 +288,7 @@ pub fn compute_pfaffian_derivative(pstate: &PfaffianState, der: &mut DerivativeO
 /// * __`pfaff_up`__ - The new pfaffian ratio after the update.
 /// * __`new_b`__ - The new column and row in the matrix $A$.
 /// * __`col`__ - The index of the column and row that changed in the matrix $A$.
+/// TODOC
 pub fn get_pfaffian_ratio_exchange(
     previous_pstate: &PfaffianState,
     previous_i: usize,
@@ -518,6 +521,7 @@ pub fn get_pfaffian_ratio_exchange(
 /// * __`pfaff_up`__ - The new pfaffian ratio after the update.
 /// * __`new_b`__ - The new column and row in the matrix $A$.
 /// * __`col`__ - The index of the column and row that changed in the matrix $A$.
+/// TODOC
 pub fn get_pfaffian_ratio(
     previous_pstate: &PfaffianState,
     previous_i: usize,
@@ -718,6 +722,7 @@ pub fn update_pstate(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: 
 }
 
 // Tahara2008 B.15
+/// TODOC
 pub fn update_pstate_b15(pstate: &mut PfaffianState, hop: (usize, usize, Spin), bm: Vec<f64>, col: usize) {
     // Rename and copy when necessary.
     trace!("Updating the inverse matrix.");

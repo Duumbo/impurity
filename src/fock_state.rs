@@ -9,6 +9,7 @@ use std::marker::Send;
 
 use strings::{UPARROW, DOWNARROW};
 
+/// Spin $\frac{1}{2}$ projections.
 #[derive(Copy, Clone, Debug)]
 pub enum Spin {
     Up,
@@ -581,6 +582,7 @@ impl<T: BitOps + std::fmt::Display + Send> Distribution<FockState<T>> for Standa
     }
 }
 
+/// TODOC
 pub trait RandomStateGeneration {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> Self;
     fn generate_hopping<R: Rng + ?Sized>(self: &Self, rng: &mut R, max_size: u32, out_idx: &mut (usize, usize, Spin)) -> Self;

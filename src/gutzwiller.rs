@@ -50,6 +50,7 @@ where
     gutz_out
 }
 
+/// TODOC
 pub fn compute_gutzwiller_der<T>(
     fock_state: FockState<T>,
     n_sites: usize,
@@ -119,6 +120,7 @@ pub fn fast_update_gutzwiller<T>(
     }
 }
 
+/// TODOC
 #[inline(always)]
 pub fn fast_update_gutzwiller_spin_change<T>(
     previous_gutz: &mut f64,

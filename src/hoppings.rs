@@ -1,5 +1,6 @@
 // Problem when compiling with N = ARRAY_SIZE, one array is out of bound,
 // Should look into this, seems like a waste to use u32 for 16 Sites for example
+/// TODOC
 pub fn generate_bitmask(transfer_matrix: &[f64], size: usize) -> Vec<SpinState> {
     const WORD_SIZE: usize = 8;
     let all_zeros = SpinState{state: [0x00; ARRAY_SIZE]};

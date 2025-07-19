@@ -1,7 +1,7 @@
 #[cfg(feature = "python-interface")]
 use pyo3::prelude::*;
 
-use blas::{dcopy, dgemm};
+use blas::{dgemm};
 
 mod strings;
 
@@ -14,7 +14,16 @@ include!("hoppings.rs");
 
 
 /// Collection of the variationnal parameters
-/// TODOC
+/// # Definition
+/// This struct contains the reference to the variationnal parameters, in the
+/// general representation. It is advised to place all three kind of variationnal
+/// parameter contiguously in memory.
+/// # Fields
+/// * __`size`__ - $N_{\rm sites}$, the number of sites in the system.
+/// * __`gi[i]`__ - Gutzwiller parameters $g_i$.
+/// * __`vij[i + j*(j-1)/2]`__ - Jastrow parameters $v_{i,j}$. Symetric packed matrix.
+/// * __`fij[i * N + j + (sigma_i + 2*sigma_j) * N * N]`__ - Orbital (Pfaffian)
+/// parameters $F_{i,j}^{\sigma_i,\sigma_j}$.
 pub struct VarParams<'a> {
     pub fij: &'a mut [f64],
     pub vij: &'a mut [f64],
@@ -49,19 +58,38 @@ impl<'a> std::fmt::Display for VarParams<'a> {
     }
 }
 
-/// The operator $O_k$
-/// TODOC
+/// The operator $\tilde{O}_{k\mu}$
+/// # Definition
+/// This struct represents the derivative operator $\tilde{O}_{k\mu}$ defined
+///
+/// $$
+/// \tilde{O}_{k\mu}=\vert x\_{\mu}\rangle\left(
+/// \frac{1}{\langle x\_{\mu}\vert\psi\rangle}\frac{\partial}{\partial\alpha_k}\langle x\_{\mu}\vert\psi\rangle
+/// \right)\langle x\_{\mu}\vert
+/// $$
+///
+/// where the index $\mu$ represents the Monte-Carlo sampling iteration. This
+/// struct also hold $\langle O_k\rangle$ and $\langle HO_k\rangle$.
 pub struct DerivativeOperator {
-    /// Number of variationnal parameters
+    /// __`n`__ - Number of variationnal parameters to be optimised.
     pub n: i32,
-    /// Number of monte-carlo sampling
+    /// __`mu`__ - Monte-Carlo sample iteration. `-1` when struct is empty, else
+    /// points to the last sample.
     pub mu: i32,
+    /// __`nsamp`__ - Number of total samples, for normalisation.
     pub nsamp: f64,
+    /// __`nsamp_int`__ - Number of total samples.
     pub nsamp_int: usize,
+    /// __`epsilon`__ - Epsilon value to add to diagonal elements of the overlap
+    /// matrix.
     pub epsilon: f64,
+    /// __`o_tilde[k + mu * n]`__ - $\tilde{O}_{k,\mu}$.
     pub o_tilde: Box<[f64]>,
+    /// __`expval_o[k]`__ - $\langle O_k\rangle$.
     pub expval_o: Box<[f64]>,
+    /// __`ho[k]`__ - $\langle HO_k\rangle$.
     pub ho: Box<[f64]>,
+    /// __`visited[mu]`__ - Number of times this row is duplicated in $\tilde{O}_{k\mu}$.
     pub visited: Box<[usize]>,
 }
 
@@ -262,8 +290,33 @@ fn _save_otilde(der: &DerivativeOperator) {
 /// $$
 pub mod pfaffian;
 
+/// Computation of the mean energy $\langle E\rangle$.
+/// # Definition
+/// This module computes the mean of observable quantities, currently only
+///
+/// $$
+/// \langle E\rangle=\frac{\langle\psi\vert E\vert\psi\rangle}{\langle\psi\vert\psi\rangle}\\\\
+/// \langle E\rangle=\sum_x
+/// \frac{\langle\psi\vert x\rangle\langle x\vert
+/// E\vert\psi\rangle}{\langle\psi\vert\psi\rangle}\\\\
+/// \langle E\rangle=\sum_x\rho(x)
+/// \frac{\langle x\vert
+/// E\vert\psi\rangle}{\langle x\vert\psi\rangle}
+/// $$
+///
+/// Computation for this value can be exact, meaning we sample the whole Hilbert
+/// space, or can be Monte-Carlo, where we sample according to a Markov chain.
 pub mod monte_carlo;
 
+/// Computation of the internal product $\langle x\vert\psi\rangle$.
+/// # Definition
+/// Computing the internal product has two main parts to it:
+/// * Computing the pfaffian of the configuration matrix for $\langle x\vert\phi_{\rm
+/// pair}\rangle$.
+/// * Computing the projector coefficients $\mathcal{P}_G\mathcal{P}_J$.
+///
+/// The functions inside this module call the appropriate routines for some
+/// predefined use-cases.
 pub mod density;
 
 /// Calculate Jastrow coefficients
@@ -331,13 +384,37 @@ pub mod gutzwiller;
 pub mod hamiltonian;
 
 /// The optimisation of the ground state
-/// TODOC
+/// # Definition
+/// The optimisation of the variationnal parameters follow the Stochastic-Reconfiguration (SR)
+/// scheme. In this scheme, we update the variationnal parameters using the
+/// imaginary time evolution of the Schrodigner equation.
+///
+/// $$
+/// \frac{\partial\alpha_k}{\partial\tau}=
+/// -S^{-1}\_{k\ell}\langle \partial\_{\alpha_\ell}\bar{\psi}\vert
+/// (H-\langle H\rangle)\vert\bar{\psi}\rangle
+/// $$
+///
+/// The main computation of this module is to inverse the overlap matrix $S$,
+/// by solving the linear equation $S\mathbf{x}=\mathbf{b}$,
+/// which is defined
+///
+/// $$
+/// S_{km}=\langle O^*\_{k}O\_m\rangle-\langle O\_k\rangle\langle O\_m\rangle\\\\
+/// b_m=\langle HO\_m\rangle-\langle H\rangle\langle O\_m\rangle
+/// $$
 pub mod optimisation;
 
 /// Computation of the ground-state
-/// TODOC
+/// # Definition
+/// This is the main computation of this program. This module's task is to
+/// iteratively compute the mean energy of a variationnal state and update its
+/// variationnal parameters according to the optimisation scheme. It is also
+/// tasked of making sense of the parameters that are optimised and not
+/// optimised.
 pub mod dvmc;
 
+/// TODOC
 pub mod green;
 
 #[cfg(feature = "python-interface")]
