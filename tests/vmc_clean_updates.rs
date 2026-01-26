@@ -3,6 +3,7 @@ use assert::close;
 
 use impurity::{FockState, RandomStateGeneration, VarParams, SysParams, generate_bitmask, DerivativeOperator};
 use impurity::monte_carlo::compute_mean_energy;
+use impurity::optimisation::ParameterMap;
 
 /// Size of the system.
 const SIZE: usize = 4;
@@ -14,6 +15,7 @@ static CONS_T: f64 = -1.0;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*SIZE;
 const NGI: usize = SIZE;
+const N_INDEP_PARAMS: usize = NFIJ + NVIJ + NGI;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0, 1.0, 0.0,
@@ -25,7 +27,7 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = [
 
 
 const NELEC: usize = 4;
-const NMCSAMP: usize = 100_000;
+const NMCSAMP: usize = 1_000_000;
 const NMCWARMUP: usize = 1000;
 const CLEAN_UPDATE_FREQUENCY: usize = 8;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-15;
@@ -107,8 +109,6 @@ fn monte_carlo_first_iteration() {
         nsamp_int: 1,
         mu: -1,
         visited: visited.into_boxed_slice(),
-        pfaff_off: NGI + NVIJ,
-        jas_off: NGI,
         epsilon: 0.0,
     };
 
@@ -175,7 +175,18 @@ fn monte_carlo_first_iteration() {
     info!("Initial Nelec: {}, {}", state.spin_down.count_ones(), state.spin_up.count_ones());
     info!("Nsites: {}", state.n_sites);
 
-    let (energy, _, _, _) = compute_mean_energy(&mut rng, state, &parameters, &sys, &mut der);
+    let mut param_map = ParameterMap::new(N_INDEP_PARAMS, SIZE);
+    for i in 0..NGI {
+        param_map.map[i] = i + 1;
+    }
+    for i in 0..NVIJ {
+        param_map.map[NGI + i] = i + 1;
+    }
+    for i in 0..SIZE*SIZE {
+        param_map.map[NGI + NVIJ + SIZE*SIZE + i] = i + 1;
+    }
+
+    let (energy, _, _, _) = compute_mean_energy(&mut rng, state, &parameters, &sys, &mut der, &param_map);
     close(energy, -0.35, MONTE_CARLO_CONVERGENCE_TOLERANCE);
     close(energy, mean_energy_analytic_2sites(&parameters, &sys), MONTE_CARLO_CONVERGENCE_TOLERANCE);
 }

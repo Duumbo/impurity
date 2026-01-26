@@ -3,8 +3,9 @@ use impurity::monte_carlo::compute_mean_energy_exact;
 use impurity::gutzwiller::compute_gutzwiller_exp;
 use impurity::jastrow::compute_jastrow_exp;
 use impurity::pfaffian::construct_matrix_a_from_state;
-use impurity::{generate_bitmask, mapto_pairwf, DerivativeOperator, FockState, SysParams, VarParams};
+use impurity::{generate_bitmask, DerivativeOperator, FockState, SysParams, VarParams};
 use impurity::hamiltonian::{kinetic, potential};
+use impurity::optimisation::ParameterMap;
 
 // Number of sites
 const SIZE: usize = 2;
@@ -23,6 +24,7 @@ const TOL_SINGULARITY: f64 = 1e-12;
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE-1)/2;
 const NGI: usize = SIZE;
+const N_INDEP_PARAMS: usize = NFIJ + NVIJ + NGI;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0,
@@ -404,8 +406,6 @@ fn comupte_energy_from_all_states() {
         nsamp_int: 1,
         mu: -1,
         visited: visited.into_boxed_slice(),
-        pfaff_off: NGI + NVIJ,
-        jas_off: NGI,
         epsilon: 0.0,
     };
     let otilde_pair: Vec<f64> = vec![0.0; (NFIJ + NVIJ + NGI) * NMCSAMP];
@@ -421,12 +421,21 @@ fn comupte_energy_from_all_states() {
         nsamp_int: 1,
         mu: -1,
         visited: visited_pair.into_boxed_slice(),
-        pfaff_off: NGI + NVIJ,
-        jas_off: NGI,
         epsilon: 0.0,
     };
 
-    let mean_energy_es = compute_mean_energy_exact(&parameters, &sys, &mut der);
+    let mut param_map = ParameterMap::new(N_INDEP_PARAMS, SIZE);
+    for i in 0..NGI {
+        param_map.map[i] = i + 1;
+    }
+    for i in 0..NVIJ {
+        param_map.map[NGI + i] = i + 1;
+    }
+    for i in 0..SIZE*SIZE {
+        param_map.map[NGI + NVIJ + SIZE*SIZE + i] = i + 1;
+    }
+
+    let mean_energy_es = compute_mean_energy_exact(&parameters, &sys, &mut der, &param_map);
     der_pair.mu = der.mu;
     //for s in accumulated_states.iter() {
     //    out_str.push_str(&format!("{}\n", s));
@@ -441,7 +450,6 @@ fn comupte_energy_from_all_states() {
     //println!("Comparing monte-carlo energy, tol: {}", error);
     println!("Monte-Carlo: {}, Analytic: {}", mean_energy_es, mean_energy);
     close(mean_energy_es, mean_energy, 1e-16);
-    mapto_pairwf(&der, &mut der_pair, &sys);
 
     // Test derivatives
     let exp_val = analytic_derivatives_expval(&parameters);

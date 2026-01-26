@@ -55,7 +55,7 @@ harness = false
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 
 [profile.release]
-debug = true
+debug = false
 
 [features]
 default = []

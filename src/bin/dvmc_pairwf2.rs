@@ -8,15 +8,17 @@ use std::mem;
 use std::fs::File;
 use std::io::Write;
 
-use impurity::{VarParams, SysParams, generate_bitmask, FockState, RandomStateGeneration};
+use impurity::{generate_bitmask, FockState, RandomStateGeneration, SpinState, SysParams, VarParams};
 use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyComputationMethod, VMCParams};
 use impurity::optimisation::ParameterMap;
+use impurity::green::{compute_mean_correlator, Projector};
 
 type BitSize = u128;
 
-const SEED: u64 = 1243;
-const SIZE_N: usize = 2;
-const SIZE_M: usize = 2;
+const SEED: u64 = 1224;
+const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Closed;
+const SIZE_N: usize = 4;
+const SIZE_M: usize = 4;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -24,15 +26,16 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 1_000;
+const NMCSAMP: usize = 10_000;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = NMCSAMP;
 const NWARMUPCHAINS: usize = NOPTITER;
 //const NWARMUPCHAINS: usize = 1;
-const MCSAMPLE_INTERVAL: usize = SIZE;
+const MCSAMPLE_INTERVAL: usize = SIZE/2;
+//const MCSAMPLE_INTERVAL: usize = 1;
 const NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
-const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-12;
+const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-8;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const _CONS_U: f64 = 1.0;
 const CONS_T: f64 = 1.0;
@@ -43,12 +46,12 @@ const EPSILON_CG: f64 = 1e-16;
 const EPSILON_SHIFT: f64 = 1e-3;
 const OPTIMISATION_TIME_STEP: f64 = 2e-2;
 const OPTIMISATION_DECAY: f64 = 0.0;
-const NOPTITER: usize = 2000;
+const NOPTITER: usize = 1000;
 const ADAMS_BASHFORTH_ORDER: usize = 1;
-const KMAX: usize = NPARAMS;
+const KMAX: usize = N_INDEP_PARAMS;
 const FILTER_BEFORE_SHIFT: bool = false; // Better false (16 sites)
 //const PARAM_THRESHOLD: f64 = <f64>::EPSILON;
-const PARAM_THRESHOLD: f64 = 1e-5;
+const PARAM_THRESHOLD: f64 = 1e-3;
 //const PARAM_THRESHOLD: f64 = 0.0;
 //const PARAM_THRESHOLD: f64 = -<f64>::INFINITY;
 const OPTIMISE: bool = true;
@@ -65,17 +68,17 @@ const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
 //const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
 const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
-//const N_INDEP_PARAMS: usize = SIZE*SIZE + 1 + NVIJ;
+//const N_INDEP_PARAMS: usize = SIZE*SIZE + 1;
 //const N_INDEP_PARAMS: usize = 3;
 const SET_VIJ_ZERO: bool = true;
 const SET_GI_ZERO: bool = true;
-const SET_PAIR_PFAFFIAN: bool = true;
+const SET_PAIR_PFAFFIAN: bool = false;
 
 pub enum BoundCond {
     Periodic,
-    Closed
+    AntiPeriodic,
+    Closed,
 }
-const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Closed;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = {
     // Constructs hopping matrix for SITES_N*SITES_M
@@ -108,6 +111,28 @@ pub const HOPPINGS: [f64; SIZE*SIZE] = {
                     tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] += 1.0;
                     tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] += 1.0;
                     tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] += 1.0;
+                },
+                BoundCond::AntiPeriodic => {
+                    if next_inline > i {
+                        tmp[ next_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] += 1.0;
+                    } else {
+                        tmp[ next_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] -= 1.0;
+                    }
+                    if prev_inline < i {
+                        tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] += 1.0;
+                    } else {
+                        tmp[ prev_inline + j * SIZE_M + (i + j * SIZE_M) * SIZE] -= 1.0;
+                    }
+                    if next_column > j {
+                        tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] += 1.0;
+                    } else {
+                        tmp[ i + j * SIZE_M + (i + next_column * SIZE_M) * SIZE] -= 1.0;
+                    }
+                    if prev_column < j {
+                        tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] += 1.0;
+                    } else {
+                        tmp[ i + j * SIZE_M + (i + prev_column * SIZE_M) * SIZE] -= 1.0;
+                    }
                 },
             };
             j += 1;
@@ -179,6 +204,7 @@ fn _print_matrix(mat: &[f64], n: usize, m: usize) {
     }
     println!("{}", outstr);
 }
+
 
 const ORB_MVMC: [f64; 256] = [
     0.666757086512084,
@@ -439,6 +465,24 @@ const ORB_MVMC: [f64; 256] = [
     0.707060846369222,
 ];
 
+fn save_lattice(bm: &[SpinState], hops: &[f64], n: usize, m: usize) -> String {
+    let width = 16;
+    let mut outstr = "".to_owned();
+    outstr.push_str(&format!("# {n} {m}\n"));
+    outstr.push_str(&format!("#Hopping Bitmasks\n"));
+    for i in 0..SIZE/2 {
+        outstr.push_str(&format!("{}\n", bm[i]));
+    }
+    outstr.push_str(&format!("#Transfer Matrix\n"));
+    for i in 0..n*m {
+        for j in 0..n*m {
+            outstr.push_str(&format!("{} ", hops[j + i*m*n]));
+        }
+        outstr.push_str("\n");
+    }
+    outstr
+}
+
 
 fn main() {
     let mut fp = File::create("u_t_sweep").unwrap();
@@ -449,7 +493,13 @@ fn main() {
     let mut _save: bool = true;
     // Initialize logger
     env_logger::init();
+    let mut lattice_fp = File::create("lattice").unwrap();
     let bitmask = generate_bitmask(&HOPPINGS, SIZE);
+    write!(lattice_fp, "{}", save_lattice(&bitmask, &HOPPINGS, SIZE_N, SIZE_M)).unwrap();
+    //println!("BITMASKS");
+    for i in 0..SIZE / 2 {
+        //println!("BITMASK = {}", bitmask[i]);
+    }
     let mut rng = Vec::new();
     for i in 0..NTHREADS {
         rng.push(Mt64::new(SEED + i as u64));
@@ -521,7 +571,7 @@ fn main() {
             for i in 0..SIZE*SIZE {
                 parameters.fij[i] = 0.0;
                 //parameters.fij[i +SIZE*SIZE] = 0.5;
-                //parameters.fij[i +SIZE*SIZE] = ORB_MVMC[i];
+                parameters.fij[i +SIZE*SIZE] = ORB_MVMC[i];
                 parameters.fij[i +2*SIZE*SIZE] = 0.0;
                 parameters.fij[i +3*SIZE*SIZE] = 0.0;
             }
@@ -553,6 +603,7 @@ fn main() {
             parameters.fij[i] /= max / 4.0;
         }
         //println!("{:?}", parameters.fij);
+        //println!("Fij = {:?}", parameters.fij);
 
         let vmcparams = VMCParams {
             dt: OPTIMISATION_TIME_STEP,
@@ -595,14 +646,19 @@ fn main() {
         for i in 0..SIZE*SIZE {
             param_map.map[NGI + NVIJ + SIZE*SIZE + i] = i + 1;
         }
-        println!("{:?}", param_map.map);
+        //println!("{:?}", param_map.map);
 
-        println!("Before starting.");
+        //println!("Before starting.");
         let (e_array, noptiter, params_array) = variationnal_monte_carlo(&mut rngs, &mut states_vec, &mut parameters, &mut system_params, &vmcparams, &param_map);
         //write_energy(&mut fp, &e_array);
 
         log_energy_convs(&e_array, &mut paramsfp, noptiter);
-        log_params(&params_array, &mut varparamsfp, noptiter)
+        log_params(&params_array, &mut varparamsfp, noptiter);
+
+        // Compute correlators
+        let id = Projector::Identity;
+        let expvals = compute_mean_correlator(&mut rngs[0], states_vec[0], id, &parameters, &system_params);
+        //println!("{:?}", expvals.0);
 
     }
     mem::drop(rng);

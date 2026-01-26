@@ -6,24 +6,26 @@ use impurity::jastrow::compute_jastrow_exp;
 use impurity::pfaffian::construct_matrix_a_from_state;
 use impurity::{FockState, VarParams, SysParams, generate_bitmask, RandomStateGeneration, DerivativeOperator};
 use impurity::hamiltonian::{kinetic, potential};
+use impurity::optimisation::ParameterMap;
 
 // Number of sites
 const SIZE: usize = 2;
 // Hubbard's model $U$ parameter
-const CONS_U: f64 = 4.0;
+const CONS_U: f64 = 8.0;
 // Hubbard's model $t$ parameter
 const CONS_T: f64 = -1.0;
 // Number of electrons
 const NELEC: usize = 2;
-const NMCSAMP: usize = 10000;
+const NMCSAMP: usize = 100_000;
 const NMCWARMUP: usize = 1000;
-const CLEAN_UPDATE_FREQUENCY: usize = 32;
+const CLEAN_UPDATE_FREQUENCY: usize = 0;
 const TOL_SHERMAN: f64 = 1e-12;
 const TOL_SINGULARITY: f64 = 1e-12;
 
 const NFIJ: usize = 4*SIZE*SIZE;
 const NVIJ: usize = SIZE*(SIZE-1)/2;
 const NGI: usize = SIZE;
+const N_INDEP_PARAMS: usize = NFIJ + NVIJ + NGI;
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = [
     0.0, 1.0,
@@ -324,10 +326,10 @@ fn analytic_ho_expval(par: &VarParams) -> Vec<f64> {
     out_der
 }
 
-fn print_der(der1: &[f64], der2: &[f64], npar: usize) {
+fn print_der(der1: &[f64], psi: f64, der2: &[f64], npar: usize) {
     println!("Monte-Carlo    Analytic       Ratio");
     for i in 0..npar {
-        println!("{:11.4e}  {:10.4e}  {:10.4e}", der1[i], der2[i], der2[i] / der1[i]);
+        println!("{:11.4e}  {:10.4e}  {:10.4e}", der1[i] * psi, der2[i], psi * der2[i] / der1[i]);
     }
 }
 
@@ -438,8 +440,6 @@ fn comupte_energy_from_all_states() {
         nsamp_int: 1,
         mu: -1,
         visited: visited.into_boxed_slice(),
-        pfaff_off: NGI + NVIJ,
-        jas_off: NGI,
         epsilon: 0.0,
     };
     let initial_state: FockState<u8> = {
@@ -450,7 +450,19 @@ fn comupte_energy_from_all_states() {
         tmp
     };
 
-    let (mc_mean_energy, accumulated_states, error, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der);
+    let mut param_map = ParameterMap::new(N_INDEP_PARAMS, SIZE);
+    for i in 0..NGI {
+        param_map.map[i] = i + 1;
+    }
+    for i in 0..NVIJ {
+        param_map.map[NGI + i] = i + 1;
+    }
+    for i in 0..4*SIZE*SIZE {
+        param_map.map[NGI + NVIJ + i] = i + 1;
+    }
+    println!("{:?}", param_map.map);
+
+    let (mc_mean_energy, accumulated_states, error, cor) = compute_mean_energy(&mut rng, initial_state, &parameters, &sys, &mut der, &param_map);
     let mut out_str: String = String::new();
     for s in accumulated_states.iter() {
         out_str.push_str(&format!("{}\n", s));
@@ -467,9 +479,20 @@ fn comupte_energy_from_all_states() {
     close(mc_mean_energy, mean_energy, mean_energy * 1e-2);
 
     // Test derivatives
-    let exp_val = analytic_derivatives_expval(&parameters);
-    print_der(&der.expval_o, &exp_val, sys.ngi+sys.nvij+sys.nfij);
+    let exp_val_dirty = analytic_derivatives_expval(&parameters);
+    let mut exp_val = vec![0.0; sys.ngi + sys.nvij + sys.nfij];
+    for i in 0..sys.ngi {
+        exp_val[i] = exp_val_dirty[i + 1];
+    }
+    for i in 0..sys.nvij {
+        exp_val[i + sys.ngi] = exp_val_dirty[i + 2 + sys.ngi];
+    }
+    for i in 0..SIZE*SIZE {
+        exp_val[i + sys.ngi + sys.nvij] = exp_val_dirty[i + 3 + sys.ngi + sys.nvij];
+    }
+    println!("{:?}", exp_val_dirty);
     let psi = norm(&parameters);
+    print_der(&der.expval_o, psi, &exp_val, sys.ngi+sys.nvij+sys.nfij);
     println!("Norm: {:10.4e}", psi);
     println!("Comparing <O>, tol: {}", 1e-2);
     for i in 0..sys.ngi+sys.nvij+sys.nfij {
@@ -477,7 +500,7 @@ fn comupte_energy_from_all_states() {
     }
 
     let exp_val_ho = analytic_ho_expval(&parameters);
-    print_der(&der.ho, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
+    print_der(&der.ho, psi, &exp_val_ho, sys.ngi+sys.nvij+sys.nfij);
     let psi = norm(&parameters);
     println!("Norm: {:10.4e}", psi);
     println!("Comparing <HO>, tol: {}", 1e-2);

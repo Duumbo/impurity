@@ -1,9 +1,10 @@
 use log::{info, error};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-use std::fmt::{Display, Debug};
 use blas::{idamax, daxpy, dcopy, dscal, dnrm2};
+use std::fmt::{Display, Debug};
 use std::thread;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{BitOps, DerivativeOperator, FockState, SysParams, VarParams};
 use crate::monte_carlo::{compute_mean_energy, compute_mean_energy_exact};
@@ -293,6 +294,13 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         work_der_vec.push(work_der);
     }
 
+    // Setup the progress bar
+    let opt_progress_bar = ProgressBar::new(vmcparams.noptiter as u64);
+    opt_progress_bar.set_prefix("Optimisation Progress: ");
+    opt_progress_bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {prefix} {bar:40.cyan/blue} {pos:>7}/{len:2} {msg}")
+    .unwrap()
+    .progress_chars("##-"));
+
     for opt_iter in 0..vmcparams.noptiter {
         sys._opt_iter = opt_iter;
 
@@ -311,8 +319,8 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 },
             }
         };
-        println!("Energy = {}", mean_energy);
         // Watch out, derivatives operator are dirty. Exactly three columns are garbage
+        //println!("<O> =  {:?}", work_der_vec[0].expval_o);
 
         // Save energy, error and correlation_time.
         output_energy_array[opt_iter * 3] = mean_energy;
@@ -334,6 +342,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 daxpy(der.n, 1.0, &der.ho, incx, &mut b, incy);
             }
         }
+        //println!("b =  {:?}", b);
         let b_nrm = unsafe {
             let incx = 1;
             dnrm2(pmap.nparams as i32, &b, incx)
@@ -355,6 +364,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                     vmcparams.filter_before_shift, vmcparams.nthreads, pmap.ngi, pmap.nvij)
             },
         };
+        //println!("b =  {:?}", b);
 
         // Ignore truncated params in SR
         let mut delta_alpha = vec![0.0; pmap.dim as usize + 3];
@@ -374,8 +384,10 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
             }
         }
 
+        //println!("da =  {:?}", delta_alpha);
         // Remap da to parameter space
         let delta_alpha = pmap.reverse_map(&mut delta_alpha);
+        //println!("da =  {:?}", delta_alpha);
 
         // Update variationnal parameters
         if vmcparams.optimise {
@@ -443,7 +455,6 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
             }
             info!("Max was: {}", max);
             dscal(sys.nfij as i32, 4.0 / max, &mut params.fij, incx);
-            dscal(pmap.dim as i32 + 3, 0.0, &mut x0, incx);
             //dscal(sys.nfij as i32, 2.0 / <f64>::sqrt(nrm2), &mut params.fij, incx);
         }
 
@@ -471,9 +482,9 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
         //    dnrm2(der.n, &delta_alpha, incx)
         //};
         //error!("Changed params by norm {}", opt_delta);
-        //opt_progress_bar.inc(1);
-        //opt_progress_bar.set_message(format!("Changed params by norm: {:+>.05e} Current energy: {:+>.05e}", opt_delta, mean_energy));
+        opt_progress_bar.inc(1);
+        opt_progress_bar.set_message(format!("Changed params by norm: {:+>.03e} Current energy: {:+>.05e} ± {:>.02e}", norm2, mean_energy, deltae));
     }
-    //opt_progress_bar.finish()
+    opt_progress_bar.finish();
     (output_energy_array, vmcparams.noptiter, output_param_array)
 }

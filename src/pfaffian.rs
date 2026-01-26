@@ -2,7 +2,7 @@ use crate::{optimisation::ParameterMap, BitOps, DerivativeOperator, FockState, S
 use blas::{daxpy, ddot, dgemv, dger, dgemm};
 use lapack::{dgetrf, dgetri};
 use log::{error, trace};
-use pfapack::skpfa;
+use pfapack::{skpfa, sktrf};
 use std::fmt;
 
 /// Represents the Pfaffian state $\lvert\phi_{\text{PF}}\rangle$.
@@ -835,6 +835,18 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
     // Workspace query
     let mut work: Vec<f64> = Vec::with_capacity(1);
     work.push(0.0);
+
+    // Debug matrix
+    //println!("In");
+    //let mut out_str = "".to_owned();
+    //for i in 0..n as usize {
+    //    for j in 0..n as usize {
+    //            out_str.push_str(&format!("{:width$.04e} ", b[j + i*n as usize], width = 10));
+    //    }
+    //    out_str.push_str("\n");
+    //}
+    //println!("{}", out_str);
+
     unsafe {
         skpfa::dskpfa(
             b'L',
@@ -859,6 +871,21 @@ pub fn compute_pfaffian_wq(a: &mut [f64], n: i32) -> f64 {
         )
     }
     assert_eq!(info, 0);
+
+    // Debug Matrix
+    //println!("Out");
+    //println!("");
+    //let mut out_str = "".to_owned();
+    //for i in 0..n as usize {
+    //    for j in 0..n as usize {
+    //            out_str.push_str(&format!("{:width$.04e} ", b[j + i*n as usize], width = 10));
+    //    }
+    //    out_str.push_str("\n");
+    //}
+    //println!("{}", out_str);
+    //println!("{}", pfaff);
+
+    //panic!("Whats inside");
     // We computed the pfaffian of the transpose. Pf(A^T)=(-1)^{n/2}Pf(A)
     let sign: bool = (n % 4) == 2;
     if sign {pfaff *= -1.0;}

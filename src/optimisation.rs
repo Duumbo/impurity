@@ -61,9 +61,9 @@ impl ParameterMap {
     }
     #[inline(always)]
     fn get_vij(self: &Self, i: usize, k: usize) -> usize {
-        if k + i*(i-1)/2 >= self.nvij {
-            panic!("Index out of bounds. {}", i);
-        }
+        //if k + i*(i-1)/2 >= self.nvij {
+        //    panic!("Index out of bounds. {}", i);
+        //}
         self.map[self.ngi + k + i*(i-1)/2] + self.ngi + 1
     }
     pub fn index_vij(self: &Self, otilde: &[f64], i: usize, k: usize, mu: usize) -> f64 {
@@ -79,9 +79,9 @@ impl ParameterMap {
     }
     #[inline(always)]
     fn get_gi(self: &Self, i: usize) -> usize {
-        if i >= self.ngi {
-            panic!("Index out of bounds. {}", i);
-        }
+        //if i >= self.ngi + 1 {
+        //    panic!("Index out of bounds. {}", i);
+        //}
         self.map[i]
     }
     pub fn index_gi(self: &Self, otilde: &[f64], i: usize, mu: usize) -> f64 {
@@ -98,21 +98,24 @@ impl ParameterMap {
 
     pub fn reverse_map(self: &Self, x: &mut [f64]) -> Box<[f64]> {
         let mut out = vec![0.0; self.dim].into_boxed_slice();
-        for i in 0..self.ngi {
+        let ngi = self.size;
+        let nvij = (self.size * self.size - self.size) / 2;
+        let nfij = 4 * self.size * self.size;
+        for i in 0..ngi {
             let id = self.map[i];
             if id == 0 {continue;}
             out[i] = x[id];
         }
-        for i in 0..self.nvij {
-            let id = self.map[self.ngi + i];
-            let od = i + self.ngi;
+        for i in 0..nvij {
+            let id = self.map[ngi + i];
+            let od = i + ngi;
             if id == 0 {continue;}
             let id = id + self.ngi + 1;
             out[od] = x[id];
         }
-        for i in 0..self.nfij {
-            let id = self.map[self.ngi + self.nvij + i];
-            let od = i + self.ngi + self.nvij;
+        for i in 0..nfij {
+            let id = self.map[ngi + nvij + i];
+            let od = i + ngi + nvij;
             if id == 0 {continue;}
             let id = id + self.ngi + self.nvij + 2;
             out[od] = x[id];

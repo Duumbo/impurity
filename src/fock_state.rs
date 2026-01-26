@@ -395,7 +395,7 @@ impl std::ops::Shl<usize> for SpinState {
 impl fmt::Display for SpinState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for i in 0..ARRAY_SIZE {
-            write!(f, "{:0b} ", self.state[i])?;
+            write!(f, "{:08b} ", self.state[i])?;
         }
         write!(f, "")
     }

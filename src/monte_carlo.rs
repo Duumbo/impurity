@@ -59,9 +59,11 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8> + Send>
 }
 
 #[inline(always)]
-fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug + Send>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
+fn compute_hamiltonian<T: BitOps + From<u8> + std::fmt::Display + std::fmt::Debug + Send>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
     let kin = kinetic(state, pstate, proj, params, sys);
     let e = kin + potential(state, proj, pstate, sys);
+    //println!("K{state} = {}", kin/ (pstate.pfaff * <f64>::exp(proj)));
+    //println!("U{state} = {}", potential(state, proj, pstate, sys)/ (pstate.pfaff * <f64>::exp(proj)));
     trace!("Hamiltonian application <x|H|psi> = {} for state: |x> = {}", e, state);
     e / (pstate.pfaff * <f64>::exp(proj))
 }
@@ -245,16 +247,19 @@ fn energy_error_estimation(
     error_estimation_level: usize,
 ) {
     // Energy error estimation
+    let mut mean = state_energy;
     let accumulation_level = <f32>::log2((mc_it + 1) as f32) as usize;
-    for i in 0..accumulation_level {
+    for i in 0..=accumulation_level {
         if i >= error_estimation_level { break;}
-        if i == accumulation_level - 1{
-            if i == 0 {break;}
-            previous_energies[i] = energy_sums[i - 1];
-        } else {
+        if mc_it % (1 << i) == 0 {
             n_values[i] += 1;
-            energy_sums[i] += 0.5 * (previous_energies[i] + state_energy);
-            energy_quad_sums[i] += 0.5 * (previous_energies[i]*previous_energies[i] + state_energy*state_energy);
+            energy_sums[i] += mean;
+            energy_quad_sums[i] += mean*mean;
+            if n_values[i] % 2 == 1 {
+                previous_energies[i] = mean;
+            } else {
+                mean = 0.5 * (mean + previous_energies[i]);
+            }
         }
     }
 }
@@ -441,7 +446,7 @@ where Standard: Distribution<T>
     let error_estimation_level = <f64>::log2(sys.nmcsample as f64) as usize - 5;
     let mut energy_sums = vec![0.0; error_estimation_level];
     let mut energy_quad_sums = vec![0.0; error_estimation_level];
-    let mut previous_energies = vec![0.0; error_estimation_level + 1];
+    let mut previous_energies = vec![0.0; error_estimation_level];
     let mut n_values = vec![0; error_estimation_level];
     let mut energy_bootstraped = 0.0;
 
@@ -513,6 +518,7 @@ where Standard: Distribution<T>
                 accumulated_states.push(state);
                 derivatives.visited[derivatives.mu as usize] += 1;
                 let state_energy = compute_hamiltonian(state, &pstate, proj, params, sys);
+                //println!("E = {}, |x> = {}", state_energy, state);
 
                 accumulate_expvals(&mut energy, state_energy, derivatives, 1.0);
                 energy_error_estimation(state_energy, &mut previous_energies, &mut energy_sums, &mut
@@ -608,10 +614,11 @@ where Standard: Distribution<T>
     info!("Final Energy normalized: {:.2}", energy);
     // Error estimation
     let mut error = vec![0.0; error_estimation_level];
+    let mut variances = vec![0.0; error_estimation_level];
     for i in 0..error_estimation_level {
+        variances[i] = (1.0 / (n_values[i] as f64 - 1.0)) * (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / n_values[i] as f64);
         error[i] = <f64>::sqrt(
-            (energy_quad_sums[i] - energy_sums[i]*energy_sums[i] / ((n_values[i]*n_values[i]) as f64)) /
-            (n_values[i] * (n_values[i] - 1)) as f64
+            variances[i] / n_values[i] as f64
             );
     }
     if derivatives.mu == -1 {

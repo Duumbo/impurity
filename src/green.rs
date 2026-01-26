@@ -65,7 +65,7 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8> + Send>
 }
 
 #[inline(always)]
-fn compute_hamiltonian<T: BitOps + std::fmt::Display + std::fmt::Debug + Send>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
+fn compute_hamiltonian<T: BitOps + From<u8> + std::fmt::Display + std::fmt::Debug + Send>(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, sys: &SysParams) -> f64 {
     let kin = kinetic(state, pstate, proj, params, sys);
     let e = kin + potential(state, proj, pstate, sys);
     trace!("Hamiltonian application <x|H|psi> = {} for state: |x> = {}", e, state);
@@ -275,9 +275,8 @@ fn opperate_by_correlator
     }
 }
 
-#[inline(always)]
 fn accumulate_correlators<T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
-(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, n_sites: usize, expval_corr: &mut [f64])
+(state: FockState<T>, pstate: &PfaffianState, proj: f64, params: &VarParams, n_sites: usize, expval_corr: &mut [f64], depth: usize, k: usize, l: usize)
 {
     // Loop over all correlators
     // These loops are unrolled to allow the compiler to optimise hard coded spins => less branches
@@ -297,7 +296,12 @@ fn accumulate_correlators<T: BitOps + std::fmt::Debug + std::fmt::Display + From
                 }
             };
             let total_ratio = ratio * <f64>::exp(proj_copy - proj);
-            expval_corr[j + i * n_sites] += total_ratio;
+            if depth == 0 {
+                expval_corr[j + i * n_sites] += total_ratio;
+                accumulate_correlators(state, pstate, proj, params, n_sites, expval_corr, 1, i, j);
+            } else {
+                expval_corr[4*n_sites*n_sites + j + i * n_sites + k * n_sites * n_sites + l * n_sites * n_sites * n_sites] += total_ratio;
+            }
         }
     }
     // up down
@@ -360,10 +364,10 @@ fn accumulate_correlators<T: BitOps + std::fmt::Debug + std::fmt::Display + From
 pub fn compute_mean_correlator
 <R: Rng + ?Sized,
 T: BitOps + std::fmt::Debug + std::fmt::Display + From<u8> + Send>
-(rng: &mut R, initial_state: FockState<T>, projection: Projector, params: &VarParams, sys: &SysParams) -> (f64, Vec<FockState<T>>)
+(rng: &mut R, initial_state: FockState<T>, projection: Projector, params: &VarParams, sys: &SysParams) -> (Vec<f64>, f64, Vec<FockState<T>>)
 where Standard: Distribution<T>
 {
-    let mut expval_correlators = vec![0.0; 4*sys.size*sys.size];
+    let mut expval_correlators = vec![0.0; 16*sys.size*sys.size*sys.size*sys.size + 4*sys.size*sys.size];
     let mut state = initial_state;
     let mut accumulated_states: Vec<FockState<T>> = Vec::new();
     let (mut pstate, mut proj) = compute_internal_product_parts(state, params, sys);
@@ -424,7 +428,7 @@ where Standard: Distribution<T>
             accumulated_states.push(state);
             match projection {
                 Projector::Identity => {
-                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators);
+                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators, 0, 0, 0);
                 },
                 Projector::ElectronExcitation { i, sigmai } => {
                     let excitation = (i, i, sigmai, sigmai);
@@ -434,7 +438,7 @@ where Standard: Distribution<T>
                             // If None, then n_isigmai |x> = 0. Accumulate nothing
                         },
                         Some(_) => {
-                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators);
+                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators, 0, 0, 0);
                         },
                     }
                 },
@@ -453,7 +457,7 @@ where Standard: Distribution<T>
                                     // If None, then n_jsigmaj |x> = 0. Accumulate nothing
                                 },
                                 Some(_) => {
-                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators);
+                    accumulate_correlators(state, &pstate, proj, &params, sys.size, &mut expval_correlators, 0, 0, 0);
                                 },
                             }
                         },
@@ -474,5 +478,5 @@ where Standard: Distribution<T>
     info!("Final Energy: {:.2}", energy);
     normalize(&mut energy, &mut energy_bootstraped, sys.nmcsample as f64, sys.nbootstrap as f64);
     info!("Final Energy normalized: {:.2}", energy);
-    (energy_bootstraped, accumulated_states)
+    (expval_correlators, energy_bootstraped, accumulated_states)
 }
