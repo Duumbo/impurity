@@ -6,7 +6,7 @@ use rand::Rng;
 use crate::gutzwiller::compute_gutzwiller_der;
 use crate::jastrow::compute_jastrow_der;
 use crate::optimisation::ParameterMap;
-use crate::{BitOps, DerivativeOperator, FockState, RandomStateGeneration, Spin, SysParams, VarParams};
+use crate::{BitOps, DerivativeOperator, FockState, Hopper, RandomStateGeneration, Spin, SysParams, VarParams};
 use crate::density::{compute_internal_product_parts, fast_internal_product, fast_internal_product_exchange};
 use crate::pfaffian::{compute_pfaffian_derivative, update_pstate, PfaffianState};
 use crate::hamiltonian::{kinetic, potential};
@@ -48,14 +48,22 @@ T: BitOps + std::fmt::Display + std::fmt::Debug + From<u8> + Send>
     rng: &mut R,
     params: &VarParams,
     sys: &SysParams,
-) -> (f64, FockState<T>, Vec<f64>, usize)
+) -> (f64, FockState<T>, Vec<f64>, usize, usize)
     where Standard: Distribution<T>
 {
     let state2 = state.generate_hopping(rng, sys.size as u32, hop);
+    let all_states = state.generate_all_hoppings(&sys.hopping_bitmask);
+    let n_states = all_states.len();
+    if n_states == 0 {
+        panic!("Proposed a hopping while none were accessible. Undefined Behavior.");
+    }
+    let idx = rng.gen::<usize>() % n_states;
+    //*hop = all_states[idx];
+    //let state2 = state.make_hopping(hop);
     let (ratio_ip, updated_column, col_idx) = {
         fast_internal_product(state, &state2, pfaff_state, &hop, previous_proj, params)
     };
-    (ratio_ip, state2, updated_column, col_idx)
+    (ratio_ip, state2, updated_column, col_idx, n_states)
 }
 
 #[inline(always)]
@@ -130,6 +138,7 @@ fn warmup<T, R>(
     ratio_prod: &mut f64,
     pstate: &mut PfaffianState,
     n_accepted_updates: &mut usize,
+    old_accessible_states_number: &mut usize,
     params: &VarParams,
     sys: &SysParams
 )
@@ -140,18 +149,23 @@ where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + Send,
     // Warmup
     for _ in 0..sys.nmcwarmup {
         let mut proj_copy = *proj;
-        let mut choose_up_type: usize = rng.gen::<usize>() % 20;
+        let mut choose_up_type: usize = rng.gen::<usize>() % 2;
         if (state.spin_up ^ state.spin_down).leading_zeros() >= state.n_sites as u32 {
             choose_up_type = 1;
         }
         if (choose_up_type != 0) || DEACTIVATE_EXCHANGE {
-            let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, hop, rng, params, sys);
+            let (mut ratio, state2, col, colidx, new_accessible_states_number) =
+                propose_hopping(&state, &pstate, &mut proj_copy, hop, rng, params, sys);
+
             trace!("Current state: {}", state);
             trace!("Proposed state: {}", state2);
             trace!("Ratio: {}", ratio);
             ratio *= <f64>::exp(proj_copy - *proj);
+            *old_accessible_states_number = new_accessible_states_number;
+            let probability = ratio * ratio * (new_accessible_states_number as f64 / *old_accessible_states_number as f64);
             let w = rng.gen::<f64>();
-            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+
+            if probability >= w {
                 // We ACCEPT
                 trace!("Accept.");
                 *n_accepted_updates += 1;
@@ -171,6 +185,7 @@ where T: BitOps + From<u8> + std::fmt::Debug + std::fmt::Display + Send,
                     params,
                     sys
                 );
+                *old_accessible_states_number = new_accessible_states_number;
 
             }
         } else {
@@ -439,6 +454,7 @@ where Standard: Distribution<T>
     let mut proj_copy_persistent = proj;
     let mut ratio_prod = 1.0;
     let mut sample_counter: usize = 0;
+    let mut old_accessible_states_number = state.generate_all_hoppings(&sys.hopping_bitmask).len();
     if <f64>::log2(sys.nmcsample as f64) <= 6.0 {
         error!("Not enough monte-carlo sample for an accurate error estimation. NMCSAMPLE = {}", sys.nmcsample);
         panic!("NMCSAMPLE is less than 64.");
@@ -453,7 +469,7 @@ where Standard: Distribution<T>
     if sys.nwarmupchains > sys._opt_iter {
         info!("Starting the warmup phase.");
         warmup(rng, &mut state, &mut hop, &mut proj, &mut proj_copy_persistent, &mut ratio_prod, &mut
-            pstate, &mut n_accepted_updates, params, sys);
+            pstate, &mut n_accepted_updates, &mut old_accessible_states_number, params, sys);
     }
 
     info!("Starting the sampling phase.");
@@ -472,20 +488,26 @@ where Standard: Distribution<T>
         energy_quad_sums, &mut n_values, 0, error_estimation_level);
     for mc_it in 0..(sys.nmcsample * sys.mcsample_interval) {
         let mut proj_copy = proj;
-        let mut choose_up_type = rng.gen::<usize>() % 20;
+        let mut choose_up_type = rng.gen::<usize>() % 2;
         if (state.spin_up ^ state.spin_down).leading_zeros() >= state.n_sites as u32 {
             choose_up_type = 1;
         }
         if (choose_up_type != 0) || DEACTIVATE_EXCHANGE {
             trace!("Before proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
-            let (mut ratio, state2, col, colidx) = propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
+            let (mut ratio, state2, col, colidx, new_accessible_states_number) =
+                propose_hopping(&state, &pstate, &mut proj_copy, &mut hop, rng, params, sys);
+
             trace!("After proposition: ~O_[0, {}] = {}", derivatives.mu + 1, derivatives.o_tilde[(derivatives.n * (derivatives.mu + 1)) as usize]);
             trace!("Current state: {}", state);
             trace!("Proposed state: {}", state2);
             trace!("Ratio: {}", ratio);
+
             ratio *= <f64>::exp(proj_copy - proj);
+            old_accessible_states_number = new_accessible_states_number;
+            let probability = <f64>::abs(ratio) * <f64>::abs(ratio) * (new_accessible_states_number as f64 / old_accessible_states_number as f64);
             let w = rng.gen::<f64>();
-            if <f64>::abs(ratio) * <f64>::abs(ratio) >= w {
+
+            if probability >= w {
                 // We ACCEPT
                 trace!("Accept.");
                 // Keep in memory we changed the state. Need to recompute the
@@ -508,6 +530,7 @@ where Standard: Distribution<T>
                     params,
                     sys
                 );
+                old_accessible_states_number = new_accessible_states_number;
             }
             if sample_counter >= sys.mcsample_interval {
                 // Compute the derivative operator

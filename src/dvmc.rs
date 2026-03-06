@@ -260,6 +260,36 @@ fn adams_bashforth_optimisation(
     }
 }
 
+pub fn apply_parameter_map(params: &mut VarParams, pmap: &ParameterMap) {
+    let mut indep_parameters = vec![];
+    for i in 0..2*params.size {
+        for j in 0..2*params.size {
+            let jj = j % params.size;
+            let sj = j / params.size;
+            let ii = i % params.size;
+            let si = i / params.size;
+            let block = (sj + si * 2) * params.size * params.size;
+            let idx_indep = pmap.get_fij(ii, jj + block) - pmap.ngi - pmap.nvij - 2;
+            //println!("{}", idx_indep);
+            let new_value = if idx_indep == 0 {
+                0.0
+            } else {
+                if idx_indep > indep_parameters.len() {
+                    //println!("Pushed {} {} {} {}", ii, jj, si, sj);
+                    indep_parameters.push(params.fij[ii * params.size + jj + block]);
+                }
+                indep_parameters[idx_indep - 1]
+            };
+            //println!("Set fij indep {} = F_({}, {})^({}, {})", idx_indep, ii, jj, si, sj);
+            //println!("New_Value = {}, Old_Value = {}", new_value, params.fij[ii * params.size + jj + block]);
+            params.fij[ii * params.size + jj + block] = new_value;
+        }
+    }
+    //println!("{:?}", pmap.map);
+    //println!("{:?}", params.fij);
+    //println!("{:?}", indep_parameters);
+}
+
 /// TODOC
 pub fn variationnal_monte_carlo<R: Rng + ?Sized + Send + Sync, T>(
     rng: &mut [&mut R],
@@ -275,6 +305,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
     let mut output_param_array = vec![0.0; vmcparams.noptiter * (sys.ngi + sys.nvij + sys.nfij)];
     let mut parameter_steps = vec![0.0; (sys.ngi + sys.nvij + sys.nfij) * vmcparams.adams_bashforth_order];
     let mut adams_order = 1;
+    apply_parameter_map(params, pmap);
 
     let mut x0 = vec![0.0; sys.ngi + sys.nvij + sys.nfij + 3].into_boxed_slice();
     let mut b = vec![0.0; sys.ngi + sys.nvij + sys.nfij + 3].into_boxed_slice();

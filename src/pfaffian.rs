@@ -587,8 +587,11 @@ pub fn get_pfaffian_ratio(
     //println!("Making hopping ({}, {}, {}, {})", previous_i, new_i, previous_spin, new_spin);
     //println!("Index: up {:?}, down {:?}", indx_up, indx_down);
     let col = match previous_spin {
-        Spin::Up => indx_up.iter().position(|&r| r == previous_i).unwrap(),
-        Spin::Down => indx_down.iter().position(|&r| r == previous_i).unwrap() + indx_up.len(),
+        Spin::Up => indx_up.iter().position(|&r| r == previous_i)
+            .expect(&format!("The hopping was illed constructed. Failed to compute the ratio. Expected to find electron {} of spin up, but there was no electron.", previous_i)),
+        Spin::Down => indx_down.iter().position(|&r| r == previous_i)
+            .expect(&format!("The hopping was illed constructed. Failed to compute the ratio. Expected to find electron {} of spin down, but there was no electron.", previous_i))
+            + indx_up.len(),
     };
 
     // Compute the updated pfaffian.

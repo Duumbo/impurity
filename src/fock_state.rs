@@ -473,9 +473,38 @@ fn rot_right<T: BitOps>(s: T, n: usize, size: usize) -> T {
 pub trait Hopper {
     fn generate_all_hoppings(self: &Self, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)>;
     fn generate_all_exchange(self: &Self) -> Vec<(usize, usize)>;
+    fn make_hopping(self: &Self, hop: &(usize, usize, Spin)) -> Self;
 }
 
 impl<T: BitOps + From<SpinState> + std::fmt::Display + Send> Hopper for FockState<T> {
+    fn make_hopping(self: &FockState<T>, hop: &(usize, usize, Spin)) -> FockState<T> {
+
+        let mut sup = self.spin_up;
+        let mut sdown = self.spin_down;
+        let spin = hop.2;
+        let previous = hop.0;
+        let new = hop.1;
+
+        match spin {
+            Spin::Up => {
+                // TODO: Combine these sets as a single bitmask. Maybe requires to modify the Trait BitOps
+                sup.set(previous);
+                sup.set(new);
+            },
+            Spin::Down => {
+                sdown.set(previous);
+                sdown.set(new);
+            }
+        }
+
+        FockState{
+            n_sites: self.n_sites,
+            spin_up: sup,
+            spin_down: sdown,
+        }
+
+    }
+
     fn generate_all_hoppings(self: &FockState<T>, bitmask: &[SpinState]) -> Vec<(usize, usize, Spin)> {
         let sup = self.spin_up;
         let sdo = self.spin_down;
@@ -594,22 +623,23 @@ where T: BitOps + std::fmt::Display + Send,
     Standard: Distribution<T>
 {
     fn generate_from_nelec<R: Rng + ?Sized>(rng: &mut R, nelec: usize, max_size: usize) -> FockState<T> {
+        if nelec % 2 != 0 {
+            panic!("You should generate states with pair number of electrons, else the ansatz specified breaks.");
+        }
         let mut state = FockState{spin_up: <T>::zeros(), spin_down: <T>::zeros(), n_sites: max_size};
         let mut i = 0;
+        while i < nelec / 2 {
+            let index: usize = rng.gen_range(0..max_size);
+            if !(state.spin_up.check(index)) {
+                state.spin_up.set(index);
+                i += 1;
+            }
+        }
         while i < nelec {
             let index: usize = rng.gen_range(0..max_size);
-            let spin = rng.gen_bool(0.5);
-            if spin {
-                if !(state.spin_up.check(index)) {
-                    state.spin_up.set(index);
-                    i += 1;
-                }
-            }
-            else {
-                if !(state.spin_down.check(index)) {
-                    state.spin_down.set(index);
-                    i += 1;
-                }
+            if !(state.spin_down.check(index)) {
+                state.spin_down.set(index);
+                i += 1;
             }
         }
         state

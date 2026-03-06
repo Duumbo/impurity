@@ -7,6 +7,7 @@ use std::mem;
 //use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::Write;
+use std::ops::Index;
 
 use impurity::{generate_bitmask, FockState, RandomStateGeneration, SpinState, SysParams, VarParams};
 use impurity::dvmc::{variationnal_monte_carlo, EnergyOptimisationMethod, EnergyComputationMethod, VMCParams};
@@ -16,7 +17,7 @@ use impurity::green::{compute_mean_correlator, Projector};
 type BitSize = u128;
 
 const SEED: u64 = 1224;
-const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Closed;
+const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Periodic;
 const SIZE_N: usize = 4;
 const SIZE_M: usize = 4;
 // SIZE = SIZE_N x SIZE_M
@@ -35,6 +36,7 @@ const MCSAMPLE_INTERVAL: usize = SIZE/2;
 //const MCSAMPLE_INTERVAL: usize = 1;
 const NTHREADS: usize = 1;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
+//const CLEAN_UPDATE_FREQUENCY: usize = 0;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-8;
 const TOLERENCE_SINGULARITY: f64 = 1e-12;
 const _CONS_U: f64 = 1.0;
@@ -67,7 +69,22 @@ const PAIRWF: bool = false;
 const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
 //const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
-const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+//const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
+const N_APPLIED_SYM: usize = 2;
+const APPLIED_SYMMETRIES: [C4; N_APPLIED_SYM] = [
+    C4::SigmaX,
+    C4::SigmaY,
+    //C4::C4,
+    //C4::C4_2,
+    //C4::C4_3,
+];
+const SUBLATTICE_SYM: bool = true;
+const SUB_N: usize = 2;
+const N_INDEP_PARAMS: usize = if SUBLATTICE_SYM {
+    2*SIZE*SIZE / (SUB_N * SUB_N) + NGI + NVIJ
+} else {
+    2*SIZE*SIZE/(N_APPLIED_SYM+1) + NGI + NVIJ
+};
 //const N_INDEP_PARAMS: usize = SIZE*SIZE + 1;
 //const N_INDEP_PARAMS: usize = 3;
 const SET_VIJ_ZERO: bool = true;
@@ -78,6 +95,79 @@ pub enum BoundCond {
     Periodic,
     AntiPeriodic,
     Closed,
+}
+
+#[derive(Clone, Debug, Copy)]
+pub enum C4 {
+    SigmaX,
+    SigmaY,
+    C4,
+    C4_2,
+    C4_3,
+}
+
+trait Symetries {
+    fn get_symetric_indices(self, i: usize, j: usize, n: usize, m: usize) -> (usize, usize);
+    fn get_strade(self, n: usize, m: usize) -> usize;
+}
+
+impl Symetries for C4 {
+    fn get_strade(self, n: usize, m: usize) -> usize {
+        match self {
+            Self::C4 => {
+                todo!()
+            }
+            Self::C4_2 => {
+                todo!()
+            }
+            Self::C4_3 => {
+                todo!()
+            }
+            Self::SigmaX => {
+                n/2
+            }
+            Self::SigmaY => {
+                n
+            }
+        }
+    }
+    fn get_symetric_indices(self, i: usize, j: usize, n: usize, m: usize) -> (usize, usize) {
+        match self {
+            Self::C4 => {
+                todo!()
+            },
+            Self::C4_2 => {
+                todo!()
+            },
+            Self::C4_3 => {
+                todo!()
+            },
+            Self::SigmaX => {
+                let kj = j % (m/2);
+                let dj = j / (m/2);
+                let j_off = if dj > 0 {
+                    (m/2) - kj - 1
+                } else {
+                    kj
+                };
+                let di = i;
+                (di, j_off)
+            },
+            Self::SigmaY => {
+                println!("({}, {})", i, j);
+                let ki = i % (n/2);
+                let di = i / (n/2);
+                println!("(ki, di) = ({}, {})", ki, di);
+                let i_off = if di > 0 {
+                    (n/2) - ki - 1
+                } else {
+                    ki
+                };
+                let dj = j;
+                (i_off, dj)
+            },
+        }
+    }
 }
 
 pub const HOPPINGS: [f64; SIZE*SIZE] = {
@@ -483,6 +573,131 @@ fn save_lattice(bm: &[SpinState], hops: &[f64], n: usize, m: usize) -> String {
     outstr
 }
 
+fn create_fij_map(pmap: &mut ParameterMap) {
+    for i in 0..SIZE_N {
+        for j in 0..SIZE_M {
+            for ll in 0..2*SIZE {
+                pmap.map[NGI + NVIJ + SIZE*SIZE + j + i*SIZE_M + ll*SIZE] = 1 + j + i*SIZE_M + ll*SIZE;
+            }
+        }
+    }
+
+    println!("{:?}", pmap.map);
+    println!("Applying symetries.");
+    for sym in APPLIED_SYMMETRIES.iter() {
+        let mut seen = vec![0; 2*SIZE*SIZE];
+        println!("{:?}", sym);
+        println!();
+        for i in 0..SIZE_N {
+            for j in 0..SIZE_M {
+                let (di, j_off) = sym.get_symetric_indices(i, j, SIZE_N, SIZE_M);
+                let strade = sym.get_strade(SIZE_N, SIZE_M);
+                println!("({}, {}) => ({}, {})", i, j, di, j_off);
+                for ll in 0..2*SIZE {
+                    let old_indep = pmap.map[NGI + NVIJ + SIZE*SIZE + j + i*SIZE_M + ll*SIZE];
+                    let new_indep = 1 + di * strade + j_off + ll*SIZE/2;
+                    let chosen = if old_indep != 0 {
+                        if seen[old_indep-1] == 0 {
+                            seen[old_indep-1] = new_indep;
+                        }
+                        seen[old_indep-1]
+                    } else {
+                        0
+                    };
+
+                    pmap.map[NGI + NVIJ + SIZE*SIZE + j + i*SIZE_M + ll*SIZE] = chosen;
+                }
+            }
+        }
+        //Renormalize map
+        let mut seen = vec![];
+        for i in 0..4*SIZE*SIZE {
+            let indep_identifier = pmap.map[NGI+NVIJ+i];
+            if indep_identifier == 0 {
+                continue;
+            }
+            if !seen.contains(&indep_identifier) {
+                seen.push(indep_identifier);
+            }
+            let new_ident = seen.iter().position(|&x| x == indep_identifier).expect("If the map doesn't contain the identifier, we push it.");
+            pmap.map[NGI+NVIJ+i] = new_ident+1;
+        }
+
+        println!();
+        println!("{:?}", pmap.map);
+        println!();
+    }
+}
+
+fn test_sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
+    for kk in 0..SIZE {
+        println!();
+        let kk_x = kk % SIZE_M;
+        let kk_y = kk / SIZE_M;
+        for ll in 0..SIZE {
+            let ll_x = ll % SIZE_M;
+            let ll_y = ll / SIZE_M;
+            let diff_vec = (
+                (ll_x as i32 - kk_x as i32).rem_euclid(SIZE_M as i32),
+                (ll_y as i32 - kk_y as i32).rem_euclid(SIZE_N as i32)
+            );
+
+            let this_param = pmap.map[NGI + NVIJ + ll + kk * SIZE + SIZE*SIZE];
+            let n_sym_x = (SIZE_M / sub_n);
+            let n_sym_y = (SIZE_N / sub_n);
+
+            for i in 0..n_sym_y {
+                for j in 0..n_sym_x {
+                    let jj_x = (kk_x + j * sub_n) % SIZE_M;
+                    let jj_y = (kk_y + i * sub_n) % SIZE_N;
+                    let jj = jj_x + jj_y * SIZE_M;
+                    let ii_x = (jj_x as i32 + diff_vec.0).rem_euclid(SIZE_M as i32);
+                    let ii_y = (jj_y as i32 + diff_vec.1).rem_euclid(SIZE_N as i32);
+                    let ii = ii_x as usize + ii_y as usize * SIZE_M;
+                    let other_param = pmap.map[NGI + NVIJ + ii + jj * SIZE + SIZE*SIZE];
+                    assert_eq!(this_param, other_param, "F_({}, {}) == F_({}, {})", kk, ll, jj, ii);
+                }
+            }
+        }
+    }
+}
+
+fn sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
+    for kk in 0..SIZE {
+        let sub_i = kk / SIZE_M;
+        let sub_j = kk % SIZE_N;
+        for ll in 0..SIZE {
+            let sub_ii = ll / SIZE_M;
+            let sub_jj = ll % SIZE_N;
+
+            let point1 = ((sub_i + sub_ii) % SIZE_M, (sub_j + sub_jj) % SIZE_N);
+            let point2 = (sub_i % sub_n, sub_j % sub_n);
+            let point3 = (sub_ii % sub_n, sub_jj % sub_n);
+
+            let indep_param = point3.1 + point3.0 * sub_n + point2.1 * sub_n * sub_n
+                + point2.0 * sub_n * sub_n * sub_n
+                + point1.1 * SIZE * SIZE + point1.0 * SIZE * SIZE * SIZE;
+            pmap.map[NGI+NVIJ+ ll + kk * SIZE + SIZE * SIZE] = indep_param + 1;
+
+        }
+    }
+    //Renormalize map
+    let mut seen = vec![];
+    for i in 0..4*SIZE*SIZE {
+        let indep_identifier = pmap.map[NGI+NVIJ+i];
+        if indep_identifier == 0 {
+            continue;
+        }
+        if !seen.contains(&indep_identifier) {
+            seen.push(indep_identifier);
+        }
+        let new_ident = seen.iter().position(|&x| x == indep_identifier).expect("If the map doesn't contain the identifier, we push it.");
+        pmap.map[NGI+NVIJ+i] = new_ident+1;
+    }
+    println!("{:?}", pmap.map);
+    test_sublattice_symetry(pmap, sub_n);
+
+}
 
 fn main() {
     let mut fp = File::create("u_t_sweep").unwrap();
@@ -638,14 +853,27 @@ fn main() {
         }
         let mut param_map = ParameterMap::new(N_INDEP_PARAMS, SIZE);
         for i in 0..NGI {
-            param_map.map[i] = i + 1;
+            if OPTIMISE_GUTZ {
+                param_map.map[i] = i + 1;
+            } else {
+                param_map.map[i] = 0;
+            }
         }
         for i in 0..NVIJ {
-            param_map.map[NGI + i] = i + 1;
+            if OPTIMISE_JAST {
+                param_map.map[NGI + i] = i + 1;
+            } else {
+                param_map.map[NGI + i] = 0;
+            }
         }
-        for i in 0..SIZE*SIZE {
-            param_map.map[NGI + NVIJ + SIZE*SIZE + i] = i + 1;
+        if SUBLATTICE_SYM {
+            sublattice_symetry(&mut param_map, SUB_N);
+        } else {
+            create_fij_map(&mut param_map);
         }
+        //for i in 0..SIZE*SIZE {
+        //    param_map.map[NGI + NVIJ + SIZE*SIZE + i] = i + 1;
+        //}
         //println!("{:?}", param_map.map);
 
         //println!("Before starting.");
@@ -656,8 +884,8 @@ fn main() {
         log_params(&params_array, &mut varparamsfp, noptiter);
 
         // Compute correlators
-        let id = Projector::Identity;
-        let expvals = compute_mean_correlator(&mut rngs[0], states_vec[0], id, &parameters, &system_params);
+        //let id = Projector::Identity;
+        //let expvals = compute_mean_correlator(&mut rngs[0], states_vec[0], id, &parameters, &system_params);
         //println!("{:?}", expvals.0);
 
     }

@@ -42,7 +42,7 @@ impl ParameterMap {
         ParameterMap { nparams, dim, map, nfij, nvij, ngi, size }
     }
     #[inline(always)]
-    fn get_fij(self: &Self, i: usize, j: usize) -> usize {
+    pub fn get_fij(self: &Self, i: usize, j: usize) -> usize {
         if i * self.size + j >= self.nfij {
             panic!("Index out of bounds. {}", i);
         }
@@ -60,7 +60,7 @@ impl ParameterMap {
         &mut otilde[new_index + mu * (self.nparams+3)]
     }
     #[inline(always)]
-    fn get_vij(self: &Self, i: usize, k: usize) -> usize {
+    pub fn get_vij(self: &Self, i: usize, k: usize) -> usize {
         //if k + i*(i-1)/2 >= self.nvij {
         //    panic!("Index out of bounds. {}", i);
         //}
@@ -78,7 +78,7 @@ impl ParameterMap {
         &mut otilde[new_index + mu * (self.nparams+3)]
     }
     #[inline(always)]
-    fn get_gi(self: &Self, i: usize) -> usize {
+    pub fn get_gi(self: &Self, i: usize) -> usize {
         //if i >= self.ngi + 1 {
         //    panic!("Index out of bounds. {}", i);
         //}

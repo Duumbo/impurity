@@ -19,7 +19,7 @@ pub fn generate_bitmask(transfer_matrix: &[f64], size: usize) -> Vec<SpinState> 
                 if transfer_matrix[(j + i + 1)%size + size * j] != 0.0 {
                     if i == 0 {
                         //println!("j + 2 / ws = {}", (j + 2) / WORD_SIZE);
-                        mask.state[(j + 1) / WORD_SIZE] ^= one << (WORD_SIZE - (j + 2) % WORD_SIZE);
+                        mask.state[(j + 1) / WORD_SIZE] ^= one.unbounded_shl((WORD_SIZE - (j + 2) % WORD_SIZE) as u32);
                     } else {
                         let a = i + j + 2;
                         let s = a % size;
@@ -45,7 +45,7 @@ pub fn generate_bitmask(transfer_matrix: &[f64], size: usize) -> Vec<SpinState> 
             if i == (size / 2) - 1 {
                 let mut j: usize = size / 2;
                 while j < size {
-                    mask.state[j / WORD_SIZE] &= !(one << (WORD_SIZE - j - 1 % WORD_SIZE));
+                    mask.state[j / WORD_SIZE] &= !(one.unbounded_shl((WORD_SIZE - (j - 1) % WORD_SIZE) as u32));
                     j += 1;
                 }
             }
