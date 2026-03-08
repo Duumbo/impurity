@@ -4,6 +4,7 @@ use blas::{daxpy, dcopy, ddot, dgemm, dgemv, dger, dscal};
 use lapack::{dposv, dsyev};
 use log::{error, trace};
 use colored::Colorize;
+use std::thread;
 
 use crate::{DerivativeOperator};
 
@@ -130,7 +131,7 @@ fn gradient(x: &[f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[
     let incy = 1;
     let mut work: Vec<f64> = vec![0.0; dim as usize];
     // Compute Ax
-    compute_w(&mut work, otilde, visited, expval_o, x, diag_epsilon, dim, mu, nsamp);
+    compute_w(&mut work, otilde, visited, expval_o, x, diag_epsilon, dim, mu, nsamp, nthreads as usize);
     //println!("Ax = {:?}", work);
     unsafe {
         // Compute b - Ax
@@ -146,7 +147,7 @@ fn update_x(x: &mut [f64], pk: &[f64], alpha: f64, dim: i32) {
     };
 }
 
-fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[f64], p: &[f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64) {
+fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_o: &[f64], p: &[f64], diag_epsilon: &[f64], dim: i32, mu: &[i32], nsamp: f64, nthreads: usize) {
     // Computes Ap
     if dim == 0 {
         error!("Cannot compute the matrix product of dimension 0. Something happened with the cutting of dimensions that is not accounted for");
@@ -163,19 +164,56 @@ fn compute_w(w: &mut [f64], otilde: &[Box<[f64]>], visited: &[&[usize]], expval_
         // Reset w
         dscal(dim, 0.0, w, incx);
     }
+    thread::scope(|scope| {
+        let threads: Vec<_> = (0..nthreads)
+            .map(|i| {
+                // Wrestle the borrow checker
+                //let wder_ptr = &mut work_der_vec[idx] as *mut _;
+                //let rng_ptr = &mut *rngs[idx] as *mut R;
+                //let state_ptr = &initial_state[idx] as *const _;
+                //let rng = unsafe { &mut *rng_ptr};
+                //let wder = unsafe { &mut *wder_ptr};
+                //let state = unsafe { & *state_ptr};
+                let o = &otilde[i];
+                let mut work: Vec<f64> = vec![0.0; mu[i] as usize];
+                let mut w_i: Vec<f64> = vec![0.0; dim as usize];
+                scope.spawn(move || {
+                    unsafe {
+                        // 80 misawa
+                        dgemv(b"T"[0], dim, mu[i], alpha, o, dim, p, incx, beta, &mut work, incy);
+                        for j in 0..mu[i] as usize {
+                            work[j] *= visited[i][j] as f64;
+                        }
+                        dgemv(b"N"[0], dim, mu[i], 1.0 / nsamp, o, dim, &work, incx, gamma, &mut w_i, incy);
+                        w_i
+                    }
+                })
+            })
+        .collect();
 
-    for (i, o) in otilde.iter().enumerate() {
-        let mut work: Vec<f64> = vec![0.0; mu[i] as usize];
-        unsafe {
-            // 80 misawa
-            dgemv(b"T"[0], dim, mu[i], alpha, o, dim, p, incx, beta, &mut work, incy);
-            for j in 0..mu[i] as usize {
-                work[j] *= visited[i][j] as f64;
+        for thread_i in threads {
+            let w_i = thread_i.join().unwrap();
+            unsafe {
+                let incx = 1;
+                let incy = 1;
+                daxpy(dim, 1.0, &w_i[0..dim as usize], incx, &mut w[0..dim as usize], incy);
             }
-            dgemv(b"N"[0], dim, mu[i], 1.0 / nsamp, o, dim, &work, incx, gamma, w, incy);
-            trace!("O_[m, mu] O^[T]_[mu, n] x_[n] = {:?}", w);
         }
-    }
+    });
+
+    //    for (i, o) in otilde.iter().enumerate() {
+    //        let mut work: Vec<f64> = vec![0.0; mu[i] as usize];
+    //        unsafe {
+    //            // 80 misawa
+    //            dgemv(b"T"[0], dim, mu[i], alpha, o, dim, p, incx, beta, &mut work, incy);
+    //            for j in 0..mu[i] as usize {
+    //                work[j] *= visited[i][j] as f64;
+    //            }
+    //            dgemv(b"N"[0], dim, mu[i], 1.0 / nsamp, o, dim, &work, incx, gamma, w, incy);
+    //            trace!("O_[m, mu] O^[T]_[mu, n] x_[n] = {:?}", w);
+    //        }
+    //    }
+    //}
     unsafe {
         let alpha = ddot(dim, &expval_o, incx, p, incy);
         // 81 misawa
@@ -635,8 +673,7 @@ pub fn conjugate_gradiant(a: &[DerivativeOperator], b: &mut [f64], x0: &mut [f64
     //println!("");
     //println!("");
     //println!("new_dim = {}", new_dim);
-    //println!("Filtered S =");
-    //println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
+    //println!("Filtered S ="); println!("{}", _save_otilde(&filtered_s, new_dim as usize, new_dim as usize));
     //println!("");
     //println!("");
     let mut w = vec![0.0; new_dim].into_boxed_slice();
@@ -670,7 +707,7 @@ pub fn conjugate_gradiant(a: &[DerivativeOperator], b: &mut [f64], x0: &mut [f64
         n_cg_max = new_dim;
     }
     for k in 0..n_cg_max {
-        compute_w(&mut w, &otilde, &vis, &expvalo, &p, &diag_epsilon, new_dim as i32, &mus, nsamp);
+        compute_w(&mut w, &otilde, &vis, &expvalo, &p, &diag_epsilon, new_dim as i32, &mus, nsamp, nthreads);
         let nrm2rk = alpha_k(b, &p, &w, &mut alpha, new_dim as i32);
         if alpha < 0.0 {
             error!("Input overlap matrix S was not positive-definite.");

@@ -18,8 +18,8 @@ type BitSize = u128;
 
 const SEED: u64 = 1224;
 const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Periodic;
-const SIZE_N: usize = 6;
-const SIZE_M: usize = 6;
+const SIZE_N: usize = 4;
+const SIZE_M: usize = 4;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -78,7 +78,7 @@ const APPLIED_SYMMETRIES: [C4; N_APPLIED_SYM] = [
     //C4::C4_2,
     //C4::C4_3,
 ];
-const SUBLATTICE_SYM: bool = false;
+const SUBLATTICE_SYM: bool = true;
 const SUB_N: usize = 2;
 const N_INDEP_PARAMS: usize = if SUBLATTICE_SYM {
     2*SIZE*SIZE / (SUB_N * SUB_N) + NGI + NVIJ
