@@ -18,8 +18,8 @@ type BitSize = u128;
 
 const SEED: u64 = 1224;
 const LATTICE_BOUNDARY_CONDITIONS: BoundCond = BoundCond::Periodic;
-const SIZE_N: usize = 4;
-const SIZE_M: usize = 4;
+const SIZE_N: usize = 6;
+const SIZE_M: usize = 6;
 // SIZE = SIZE_N x SIZE_M
 const SIZE: usize = SIZE_N*SIZE_M;
 const NFIJ: usize = 4*SIZE*SIZE;
@@ -27,14 +27,14 @@ const NVIJ: usize = SIZE*(SIZE - 1) / 2;
 const NGI: usize = SIZE;
 const NPARAMS: usize = NFIJ + NGI + NVIJ;
 const NELEC: usize = SIZE;
-const NMCSAMP: usize = 10_000;
+const NMCSAMP: usize = 200;
 const NBOOTSTRAP: usize = 1;
 const NMCWARMUP: usize = NMCSAMP;
 const NWARMUPCHAINS: usize = NOPTITER;
 //const NWARMUPCHAINS: usize = 1;
 const MCSAMPLE_INTERVAL: usize = SIZE/2;
 //const MCSAMPLE_INTERVAL: usize = 1;
-const NTHREADS: usize = 1;
+const NTHREADS: usize = 10;
 const CLEAN_UPDATE_FREQUENCY: usize = 32;
 //const CLEAN_UPDATE_FREQUENCY: usize = 0;
 const TOLERENCE_SHERMAN_MORRISSON: f64 = 1e-8;
@@ -70,15 +70,15 @@ const CONV_PARAM_THRESHOLD: f64 = 1e-100;
 
 //const N_INDEP_PARAMS: usize = NFIJ + NGI + NVIJ;
 //const N_INDEP_PARAMS: usize = SIZE*SIZE + NGI + NVIJ;
-const N_APPLIED_SYM: usize = 2;
+const N_APPLIED_SYM: usize = 0;
 const APPLIED_SYMMETRIES: [C4; N_APPLIED_SYM] = [
-    C4::SigmaX,
-    C4::SigmaY,
+    //C4::SigmaX,
+    //C4::SigmaY,
     //C4::C4,
     //C4::C4_2,
     //C4::C4_3,
 ];
-const SUBLATTICE_SYM: bool = true;
+const SUBLATTICE_SYM: bool = false;
 const SUB_N: usize = 2;
 const N_INDEP_PARAMS: usize = if SUBLATTICE_SYM {
     2*SIZE*SIZE / (SUB_N * SUB_N) + NGI + NVIJ
@@ -582,17 +582,17 @@ fn create_fij_map(pmap: &mut ParameterMap) {
         }
     }
 
-    println!("{:?}", pmap.map);
-    println!("Applying symetries.");
+    //println!("{:?}", pmap.map);
+    //println!("Applying symetries.");
     for sym in APPLIED_SYMMETRIES.iter() {
         let mut seen = vec![0; 2*SIZE*SIZE];
-        println!("{:?}", sym);
-        println!();
+        //println!("{:?}", sym);
+        //println!();
         for i in 0..SIZE_N {
             for j in 0..SIZE_M {
                 let (di, j_off) = sym.get_symetric_indices(i, j, SIZE_N, SIZE_M);
                 let strade = sym.get_strade(SIZE_N, SIZE_M);
-                println!("({}, {}) => ({}, {})", i, j, di, j_off);
+                //println!("({}, {}) => ({}, {})", i, j, di, j_off);
                 for ll in 0..2*SIZE {
                     let old_indep = pmap.map[NGI + NVIJ + SIZE*SIZE + j + i*SIZE_M + ll*SIZE];
                     let new_indep = 1 + di * strade + j_off + ll*SIZE/2;
@@ -623,15 +623,14 @@ fn create_fij_map(pmap: &mut ParameterMap) {
             pmap.map[NGI+NVIJ+i] = new_ident+1;
         }
 
-        println!();
-        println!("{:?}", pmap.map);
-        println!();
+        //println!();
+        //println!("{:?}", pmap.map);
+        //println!();
     }
 }
 
 fn test_sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
     for kk in 0..SIZE {
-        println!();
         let kk_x = kk % SIZE_M;
         let kk_y = kk / SIZE_M;
         for ll in 0..SIZE {
@@ -648,11 +647,14 @@ fn test_sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
 
             for i in 0..n_sym_y {
                 for j in 0..n_sym_x {
+                    //println!("k = ({}, {}), off = ({}, {}) * ({}, {})", kk_x, kk_y, i, j, sub_n, sub_n);
+                    //println!("diff = ({}, {})", diff_vec.0, diff_vec.1);
                     let jj_x = (kk_x + j * sub_n) % SIZE_M;
                     let jj_y = (kk_y + i * sub_n) % SIZE_N;
                     let jj = jj_x + jj_y * SIZE_M;
                     let ii_x = (jj_x as i32 + diff_vec.0).rem_euclid(SIZE_M as i32);
                     let ii_y = (jj_y as i32 + diff_vec.1).rem_euclid(SIZE_N as i32);
+                    //println!("ii = ({}, {})", ii_x, ii_y);
                     let ii = ii_x as usize + ii_y as usize * SIZE_M;
                     let other_param = pmap.map[NGI + NVIJ + ii + jj * SIZE + SIZE*SIZE];
                     assert_eq!(this_param, other_param, "F_({}, {}) == F_({}, {})", kk, ll, jj, ii);
@@ -670,13 +672,19 @@ fn sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
             let sub_ii = ll / SIZE_M;
             let sub_jj = ll % SIZE_N;
 
-            let point1 = ((sub_i + sub_ii) % SIZE_M, (sub_j + sub_jj) % SIZE_N);
+            let point1 = ((sub_ii as i32 - sub_i as i32).rem_euclid(SIZE_M as i32), (sub_jj as i32 - sub_j as i32).rem_euclid(SIZE_N as i32));
             let point2 = (sub_i % sub_n, sub_j % sub_n);
             let point3 = (sub_ii % sub_n, sub_jj % sub_n);
 
+            //if point1.0 == 0 && point1.1 == 2 && point2.0 == 0 && point2.1 == 0 {
+            //    println!("kk = {} = ({}, {})", kk, sub_i, sub_j);
+            //    println!("ll = {} = ({}, {})", ll, sub_ii, sub_jj);
+            //    println!("point1 = ({}, {}), point2 = ({}, {}), point3 = ({}, {})", point1.0, point1.1, point2.0, point2.1, point3.0, point3.1);
+            //}
+
             let indep_param = point3.1 + point3.0 * sub_n + point2.1 * sub_n * sub_n
                 + point2.0 * sub_n * sub_n * sub_n
-                + point1.1 * SIZE * SIZE + point1.0 * SIZE * SIZE * SIZE;
+                + point1.1 as usize * SIZE * SIZE + point1.0 as usize * SIZE * SIZE * SIZE;
             pmap.map[NGI+NVIJ+ ll + kk * SIZE + SIZE * SIZE] = indep_param + 1;
 
         }
@@ -694,7 +702,6 @@ fn sublattice_symetry(pmap: &mut ParameterMap, sub_n: usize) {
         let new_ident = seen.iter().position(|&x| x == indep_identifier).expect("If the map doesn't contain the identifier, we push it.");
         pmap.map[NGI+NVIJ+i] = new_ident+1;
     }
-    println!("{:?}", pmap.map);
     test_sublattice_symetry(pmap, sub_n);
 
 }

@@ -370,7 +370,7 @@ where T: BitOps + From<u8> + Display + Debug + Send + Sync, Standard: Distributi
                 let incy = 1;
                 // TODO correct the energy computed from thread. This is statistically wrong
                 daxpy(der.n, -mean_energy, &der.expval_o, incx, &mut der.ho, incy);
-                daxpy(der.n, 1.0, &der.ho, incx, &mut b, incy);
+                daxpy(der.n, 1.0 / vmcparams.nthreads as f64, &der.ho, incx, &mut b, incy);
             }
         }
         //println!("b =  {:?}", b);

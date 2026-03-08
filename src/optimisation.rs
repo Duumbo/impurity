@@ -274,12 +274,16 @@ fn prefilter_overlap_matrix(a_vec: &[DerivativeOperator], _ignore_idx: &mut [boo
         };
 
         // Now \Re{\expval{O_k}}^2
-        let z2: f64 = {
-            let mut z = 0.0;
-            z += a_vec[0].expval_o[k] * a_vec[0].expval_o[k];
-            // Statistically wrong, but good enough?
-            z
-        };
+        let mut z2: f64 = 0.0;
+        for a in a_vec.iter() {
+            let z2_i: f64 = {
+                let mut z = 0.0;
+                z += a_vec[0].expval_o[k] * a_vec[0].expval_o[k];
+                z
+            };
+            z2 += z2_i;
+        }
+        z2 /= (nthreads*nthreads) as f64;
 
         if filter_before_shift {
             diag_elem[k] = z1 - z2;
